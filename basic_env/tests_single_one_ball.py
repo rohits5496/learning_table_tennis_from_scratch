@@ -35,9 +35,13 @@ hysr.reset()
 
 frequency_manager = o80.FrequencyManager(1.0 / algo_time_step)
 
-swing_posture = [[18000, 15000], [15800, 19100], [18700, 15300], [18000, 18000]]
-swing_pressures = [p for sublist in swing_posture for p in sublist]
-wait_pressures = [p for sublist in hysr_config.reference_posture for p in sublist]
+# # swing_posture = [[18000, 15000], [15800, 19100], [18700, 15300], [18000, 18000]]
+# swing_posture = [[0,0], [0,0], [0,0], [0,0]]
+# swing_pressures = [p for sublist in swing_posture for p in sublist]
+# # wait_pressures = [p for sublist in hysr_config.reference_posture for p in sublist]
+# wait_pressures = [0,0,0,0,0,0,0,0]
+
+action = [0,0,0,0]
 
 for episode in range(3):
     print("EPISODE", episode)
@@ -45,9 +49,9 @@ for episode in range(3):
     nb_steps = 0
     while running:
         if nb_steps < 60:
-            observation, reward, reset = hysr.step(wait_pressures)
+            observation, reward, reset = hysr.step(action)
         else:
-            observation, reward, reset = hysr.step(swing_pressures)
+            observation, reward, reset = hysr.step(action)
         print(f"{nb_steps} : Obs = {observation.joint_positions}")
         if not hysr_config.accelerated_time:
             waited = frequency_manager.wait()

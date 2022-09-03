@@ -13,7 +13,6 @@ import context
 import frequency_monitoring
 import shared_memory
 from pam_mujoco import mirroring
-from my_pd_controller import MyPositionController
 from learning_table_tennis_from_scratch import configure_mujoco
 from learning_table_tennis_from_scratch import robot_integrity
 
@@ -727,58 +726,15 @@ class HysrOneBall_single_robot:
         self._step_number = 0
         self._episode_number += 1
         self._share_episode_number(self._episode_number)
-        
-        # Setting a target point and setting up the controller
-        current_obs = self._create_observation()
-        q_current = current_obs.joint_positions
-        q_target = [1,1,1,1]
-        qd_desired = [0.1, 0.1, 0.1, 0.1]  # radian per seconds
-        # the position controller
-        self.create_position_controller(q_current, qd_desired, q_target)
 
         # returning an observation
-        return current_obs
-
-    def create_position_controller(self, q_current, qd_desired, q_target):
-        # configuration for the controller
-        KP = [0.2, -3.0, 1.2, -1.0]
-        KI = [0.015, -0.25, 0.02, -0.05]
-        KD = [0.04, -0.09, 0.09, -0.09]
-        NDP = [-0.3, -0.5, -0.34, -0.48]
-        TIME_STEP = 0.01  # seconds
-        # _, _, Q_CURRENT, _ = self._pressure_commands.read()
-
-        # configuration for HYSR
-        NB_SIM_BURSTS = int((TIME_STEP / self._hysr_config.mujoco_time_step) + 0.5)
-
-        # configuration for accelerated time
-        if self._accelerated_time:
-            NB_ROBOT_BURSTS = int((TIME_STEP / hysr_config.o80_pam_time_step) + 0.5)
-
-        # configuration for real time
-        if not self._accelerated_time:
-            frequency_manager = o80.FrequencyManager(1.0 / TIME_STEP)
-
-        self.controller = MyPositionController(
-            q_current,
-            q_target,
-            self._nb_steps_per_episode,
-            self._pam_config,
-            KP,
-            KD,
-            KI,
-            NDP,
-            TIME_STEP,
-        )
-
-        self.trajectory = self.controller._q_trajectories
-
+        return self._create_observation()
 
     def _episode_over(self):
         
         # manual condition
-        # if self._step_number > 500:
-        #     return True
+        if self._step_number > 500:
+            return True
 
         # if self._nb_steps_per_episode is positive,
         # exiting based on the number of steps
@@ -820,37 +776,35 @@ class HysrOneBall_single_robot:
             joint_positions,
             joint_velocities,
         ) = self._pressure_commands.read()
+        
+        # getting information about simulated ball
+        # ball_position, ball_velocity = self._ball_communication.get()
+
+        # getting information about simulated balls
+        # def commented():
+        #     if self._extra_balls_frontend is not None:
+        #         observation = self._extra_balls_frontend.latest()
+        #         # robot racket cartesian position
+        #         robot_cartesian_position = (
+        #             observation.get_extended_state().robot_position
+        #         )
+        #         # list: for each ball, if a contact occured during this episode so far
+        #         # (not necessarily during previous step)
+        #         contacts = observation.get_extended_state().contacts
+        #         # ball position and velocity
+        #         state = observation.get_observed_states()
+        #         ball_0_position = state.get(0).get_position()
+        #         ball_0_velocity = state.get(0).get_velocity()
+        #         print(
+        #             robot_cartesian_position,
+        #             contacts[0],
+        #             ball_0_position,
+        #             ball_0_velocity,
+        #         )
 
         # convert action [ago1,antago1,ago2] to list suitable for
         # o80 ([(ago1,antago1),(),...])
-        # pressures = _convert_pressures_in(list(action))
-
-        #getting action in command values
-        command_policy = action
-        
-        ## Traj Following :
-        # 1. Get the PD controller value in torque command
-        # 2. Add the action value to the torque value (appropriate range)
-        # 3. Convert all to pressure using hueristic
-
-        #1 .  get PD value
-        if self.controller.has_next():
-            # current position and velocity of the real robot - check here as this can be different, it should not be reading again
-            # _, _, q, qd = self._pressure_commands.read()
-            q = joint_positions
-            qd = joint_velocities
-            # applying the controller to get the pressure to set
-            # pd_pressures = self.controller.next(q, qd)
-            command = self.controller.next_command(q, qd, step_mod = 0 ) #-1 because step was updated in next command before (TEST ONLY)
-            # pd_pressures2 = self.controller.convert_command_to_pressures(command)
-        else:
-            print("Controller reached position, do something HERE") #what happens when there is nothing left
-
-        #2. Add pressures/torques
-        command = [c+pi for c,pi in zip(command, command_policy)]
-
-        #3. Convert torques to pressure using heuristic
-        pressures = self.controller.convert_command_to_pressures(command)
+        pressures = _convert_pressures_in(list(action))
 
         # sending action pressures to real (or pseudo real) robot.
         if self._accelerated_time:
