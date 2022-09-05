@@ -397,6 +397,10 @@ class HysrOneBall_single_robot:
         # and set values to all simulated robot via self._mirrorings)
         # source of mirroring in pam_mujoco.mirroring.py
         # pam_mujoco.mirroring.align_robots(self._pressure_commands, self._mirrorings)
+        self.observatin = None
+        self.last_observation = None
+        self.controller = None
+        self.frequency_manager = None
 
     def get_starting_pressures(self):
         return self._hysr_config.starting_pressures
@@ -673,6 +677,13 @@ class HysrOneBall_single_robot:
 
         # only call this function once the controller is created    
         current_obs = self._create_observation()
+        self.observation = current_obs
+
+        q = self.observation.joint_positions
+        qd = self.observation.joint_velocities
+        next_pid_command = self.controller.peek_next_command(q, qd, step_mod = 0) #operates at t+1 since last next_command updated it 
+
+
         # returning an observation
         return current_obs
 
@@ -694,7 +705,7 @@ class HysrOneBall_single_robot:
 
         # configuration for real time
         if not self._accelerated_time:
-            frequency_manager = o80.FrequencyManager(1.0 / TIME_STEP)
+            self.frequency_manager = o80.FrequencyManager(1.0 / TIME_STEP)
 
         self.controller = MyPositionController(
             q_current,
@@ -753,13 +764,13 @@ class HysrOneBall_single_robot:
         # reading current real (or pseudo real) robot state
         # THIS should not be happening here. Because we need the PD component to calculate the action.
         # So lets understanding waiting a bit more.... Can we call get create observation before or should we just utilize the past observation
-        # 
-        (
-            pressures_ago,
-            pressures_antago,
-            joint_positions,
-            joint_velocities,
-        ) = self._pressure_commands.read()
+        # Commented out because the last observed obs should be used. it taken after waiting
+        # (
+        #     pressures_ago,
+        #     pressures_antago,
+        #     joint_positions,
+        #     joint_velocities,
+        # ) = self._pressure_commands.read()
 
         # convert action [ago1,antago1,ago2] to list suitable for
         # o80 ([(ago1,antago1),(),...])
@@ -777,8 +788,8 @@ class HysrOneBall_single_robot:
         if self.controller.has_next():
             # current position and velocity of the real robot - check here as this can be different, it should not be reading again
             # _, _, q, qd = self._pressure_commands.read()
-            q = joint_positions
-            qd = joint_velocities
+            q = self.observation.joint_positions
+            qd = self.observation.joint_velocities
             # applying the controller to get the pressure to set
             # pd_pressures = self.controller.next(q, qd)
             command = self.controller.next_command(q, qd, step_mod = 0 ) #-1 because step was updated in next command before (TEST ONLY)
@@ -793,6 +804,10 @@ class HysrOneBall_single_robot:
         pressures = self.controller.convert_command_to_pressures(command)
 
         # sending action pressures to real (or pseudo real) robot.
+        # Waiting needs to be HERE, since then we can get the updated observation.
+        # Being outside causes the observation to become old
+        # then we can even eliminate the new observation pull at the start
+
         if self._accelerated_time:
             # if accelerated times, running the pseudo real robot iterations
             # (note : o80_pam expected to have started in bursting mode)
@@ -800,6 +815,7 @@ class HysrOneBall_single_robot:
         else:
             # Should start acting now in the background if not accelerated time
             self._pressure_commands.set(pressures, burst=False)
+            self.frequency_manager.wait() # adding here
 
         # # sending mirroring state to simulated robot(s)
         # for mirroring_ in self._mirrorings:
@@ -827,7 +843,20 @@ class HysrOneBall_single_robot:
         # # moving the hit point to the minimal observed distance
         # # between ball and target (post racket hit)
         # if self._ball_status.min_position_ball_target is not None:
-        #     self._hit_point.set(self._ball_status.min_position_ball_target, [0, 0, 0])
+        #     self._hit_point.set(self._ball_status.min_position_ball_target, [0, 0, 0]
+
+
+        # Get the new observation
+        (
+            pressures_ago,
+            pressures_antago,
+            joint_positions,
+            joint_velocities,
+        ) = self._pressure_commands.read()
+
+        q = self.observation.joint_positions
+        qd = self.observation.joint_velocities
+        next_pid_command = self.controller.peek_next_command(q, qd, step_mod = 0) #operates at t+1 since last next_command updated it 
 
         # observation instance
         observation = _Observation(
@@ -838,6 +867,7 @@ class HysrOneBall_single_robot:
             # self._ball_status.ball_velocity,
         )
 
+        self.observation = observation
         # checking if episode is over
         episode_over = self._episode_over()
         reward = 0

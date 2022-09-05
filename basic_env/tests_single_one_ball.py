@@ -45,7 +45,7 @@ action = [0,0,0,0]
 
 for episode in range(3):
     print("EPISODE", episode)
-    running = True
+    running = True                                                                                                                                                                                                                                                                                                                                                                                                                               
     nb_steps = 0
     while running:
         if nb_steps < 60:
