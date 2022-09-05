@@ -145,19 +145,27 @@ def _convert_pressures_out(pressures_ago, pressures_antago):
 
 
 class _Observation:
+    """
+    Needs : jont_pos, joint_vel, pressures_both, pressure_diff, pos_diff, vel_diff, pd_command
+    """
     def __init__(
         self,
         joint_positions,
         joint_velocities,
         pressures,
-        # ball_position,
-        # ball_velocity,
+        pressure_diff,
+        joint_pos_diff,
+        joint_vel_diff,
+        pd_command
+
     ):
         self.joint_positions = joint_positions
         self.joint_velocities = joint_velocities
         self.pressures = pressures
-        # self.ball_position = ball_position
-        # self.ball_velocity = ball_velocity
+        self.pressure_diff = pressure_diff
+        self.joint_pos_diff = joint_pos_diff
+        self.joint_vel_diff = joint_vel_diff
+        self.pd_command = pd_command
 
 
 class HysrOneBall_single_robot:
@@ -429,12 +437,19 @@ class HysrOneBall_single_robot:
             joint_velocities,
         ) = self._pressure_commands.read()
         # ball_position, ball_velocity = self._ball_communication.get()
+
+        self.des_q = self.q_trajectory[self._step_number]
+        self.des_dq = self.dq_trajectory[self._step_number]
+
         observation = _Observation(
             joint_positions,
             joint_velocities,
             _convert_pressures_out(pressures_ago, pressures_antago),
-            # ball_position,
-            # ball_velocity,
+            pressures_ago - pressures_antago,
+            self.des_q - joint_positions,
+            self.des_dq - joint_velocities,
+            #PD action
+
         )
         return observation
 
@@ -455,91 +470,6 @@ class HysrOneBall_single_robot:
             desired=False
         )
         return pressures_ago, pressures_antago
-
-    # def contact_occured(self):
-    #     return self._ball_status.contact_occured()
-
-    # def _load_main_ball(self):
-    #     # "load" the ball means creating the o80 commands corresponding
-    #     # to the ball behavior (set by the "set_ball_behavior" method)
-    #     trajectory = self._ball_behavior.get_trajectory()
-    #     iterator = context.ball_trajectories.BallTrajectories.iterate(trajectory)
-    #     # setting the ball to the first trajectory point
-    #     duration, state = next(iterator)
-    #     self._ball_communication.set(state.get_position(), [0, 0, 0])
-    #     # shooting the ball
-    #     self._ball_communication.iterate_trajectory(iterator, overwrite=False)
-
-    # def _load_extra_balls(self):
-    #     # load the trajectory of each extra balls, as set by their
-    #     # ball_behavior attribute. See method set_extra_ball_behavior
-    #     # in this file
-    #     item3d = o80.Item3dState()
-    #     # loading the ball behavior trajectory of each extra balls.
-    #     # If set_extra_ball_behavior has not been called for a given
-    #     # extra ball, this trajectory will be None
-    #     trajectories = [
-    #         extra_ball.ball_behavior.get_trajectory()
-    #         if extra_ball.ball_behavior is not None
-    #         else None
-    #         for extra_ball in self._extra_balls
-    #     ]
-    #     # None trajectories (i.e. set_extra_ball_behavior uncalled) then
-    #     # setting a random trajectory
-    #     none_trajectory_indexes = [
-    #         index for index, value in enumerate(trajectories) if value is None
-    #     ]
-    #     if none_trajectory_indexes:
-    #         extra_trajectories = (
-    #             self._trajectory_reader.get_different_random_trajectories(
-    #                 len(none_trajectory_indexes)
-    #             )
-    #         )
-    #         for index, trajectory in zip(none_trajectory_indexes, extra_trajectories):
-    #             trajectories[index] = trajectory
-    #     for index_ball, (ball, trajectory) in enumerate(
-    #         zip(self._extra_balls, trajectories)
-    #     ):
-    #         iterator = context.ball_trajectories.BallTrajectories.iterate(trajectory)
-    #         # going to first trajectory point
-    #         _, state = next(iterator)
-    #         item3d.set_position(state.get_position())
-    #         item3d.set_velocity(state.get_velocity())
-    #         ball.frontend.add_command(index_ball, item3d, o80.Mode.OVERWRITE)
-    #         # loading full trajectory
-    #         for duration, state in iterator:
-    #             item3d.set_position(state.get_position())
-    #             item3d.set_velocity(state.get_velocity())
-    #             ball.frontend.add_command(
-    #                 index_ball,
-    #                 item3d,
-    #                 o80.Duration_us.microseconds(duration),
-    #                 o80.Mode.QUEUE,
-    #             )
-    #     for frontend in _ExtraBall.frontends.values():
-    #         frontend.pulse()
-
-    # def load_ball(self):
-    #     # loading ball: setting all trajectories points
-    #     # to the ball controllers
-    #     self._load_main_ball()
-    #     if self._extra_balls:
-    #         self._load_extra_balls()
-
-    # def reset_contact(self):
-    #     # after contact with the racket, o80 control of the ball
-    #     # is disabled (and customized contact happen). This
-    #     # restore the control.
-    #     # Also: this delete the information about the
-    #     # contact with the racket (if any)
-    #     self._simulated_robot_handle.reset_contact(SEGMENT_ID_BALL)
-    #     for ball in self._extra_balls:
-    #         ball.reset_contact()
-
-    # def deactivate_contact(self):
-    #     self._simulated_robot_handle.deactivate_contact(SEGMENT_ID_BALL)
-    #     for ball in self._extra_balls:
-    #         ball.deactivate_contact()
 
     def _do_natural_reset(self):
         self._move_to_position(self._hysr_config.reference_posture)
@@ -729,19 +659,26 @@ class HysrOneBall_single_robot:
         self._share_episode_number(self._episode_number)
         
         # Setting a target point and setting up the controller
-        current_obs = self._create_observation()
-        q_current = current_obs.joint_positions
+        (
+            pressures_ago,
+            pressures_antago,
+            joint_positions,
+            joint_velocities,
+        ) = self._pressure_commands.read()
+        q_current = joint_positions
         q_target = [1,1,1,1]
         qd_desired = [0.1, 0.1, 0.1, 0.1]  # radian per seconds
         # the position controller
         self.create_position_controller(q_current, qd_desired, q_target)
 
+        # only call this function once the controller is created    
+        current_obs = self._create_observation()
         # returning an observation
         return current_obs
 
     def create_position_controller(self, q_current, qd_desired, q_target):
         # configuration for the controller
-        KP = [0.2, -3.0, 1.2, -1.0]
+        KP = [0.8, -3.0, 1.2, -1.0]
         KI = [0.015, -0.25, 0.02, -0.05]
         KD = [0.04, -0.09, 0.09, -0.09]
         NDP = [-0.3, -0.5, -0.34, -0.48]
@@ -771,8 +708,8 @@ class HysrOneBall_single_robot:
             TIME_STEP,
         )
 
-        self.trajectory = self.controller._q_trajectories
-
+        self.q_trajectory = self.controller._q_trajectories
+        self.dq_trajectory = self.controller._dq_trajectories
 
     def _episode_over(self):
         
@@ -814,6 +751,9 @@ class HysrOneBall_single_robot:
     def step(self, action):
 
         # reading current real (or pseudo real) robot state
+        # THIS should not be happening here. Because we need the PD component to calculate the action.
+        # So lets understanding waiting a bit more.... Can we call get create observation before or should we just utilize the past observation
+        # 
         (
             pressures_ago,
             pressures_antago,
@@ -923,8 +863,19 @@ class HysrOneBall_single_robot:
         # this step is done
         self._step_number += 1
 
+        #logging
+        logs = {
+            'obs_next':observation.copy(),
+            'action':command_policy.copy(),
+            'pd_command':command.copy(),
+            'pressure': pressures.copy(),
+            'reward':reward.copy(),
+            'episode_over': episode_over
+        }
+
+
         # returning
-        return observation, reward, episode_over
+        return observation, reward, episode_over, logs
 
     def close(self):
         if self._robot_integrity is not None:

@@ -121,11 +121,10 @@ fi
 # fi
 real_robot=$(jq -r .real_robot ${hysr_config})
 if [ "$real_robot" = false ]; then
-    mujoco_ids=( "pseudo-real")
+    mujoco_ids=( "pseudo-real" )
 else
     mujoco_ids=( "simulation" )
 fi
-
 
 # building the command
 
