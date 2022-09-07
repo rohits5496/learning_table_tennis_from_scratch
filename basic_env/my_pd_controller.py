@@ -179,6 +179,24 @@ class MyPositionController:
         self._pid_command = control
         return control
 
+    def _next_command_peek(self, dof: int, q: float, qd: float, step: int) -> Tuple[float, float]:
+        """
+        Ensures class attributes are not updated as we are only peeking
+        """
+        error = self._q_trajectories[dof][step] - q
+        d_error = self._dq_trajectories[dof][step] -qd
+        _error_sum_dof = self._error_sum[dof] + error
+        control_p = self._kp[dof] * error
+        control_d = self._kd[dof] * d_error
+        control_i = self._ki[dof] * _error_sum_dof
+        self._p_command = control_p
+        self._i_command = control_i
+        self._d_command = control_d
+        control = control_p + control_d + control_i
+        control = max(min(control, 1), -1)
+        self._pid_command = control
+        return control
+
     def has_next(self) -> bool:
         """
         Returns:
@@ -218,7 +236,7 @@ class MyPositionController:
         Gets next command without updating the _step
         """
         self._step = self._step + step_mod
-        r = list(map(self._next_command, range(len(q)), q, qd, [self._step] * len(q)))
+        r = list(map(self._next_command_peek, range(len(q)), q, qd, [self._step] * len(q)))
         # self._step = self._step + 1
         return r
 
@@ -226,3 +244,11 @@ class MyPositionController:
         next_step = min(self._step + 1, len(self._q_trajectories)-1)
         r = list(map(self._next_command, range(len(q)), q, qd, [next_step] * len(q)))
         return r
+
+    def peek_next_desired_values(self):
+        """
+        Gets the desired values 
+        """
+        q_des = [self._q_trajectories[i][self._step] for i in range(len(self._q_trajectories))]
+        qd_des = [self._dq_trajectories[i][self._step] for i in range(len(self._dq_trajectories))]
+        return q_des, qd_des

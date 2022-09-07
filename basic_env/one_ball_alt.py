@@ -675,17 +675,30 @@ class HysrOneBall_single_robot:
         # the position controller
         self.create_position_controller(q_current, qd_desired, q_target)
 
-        # only call this function once the controller is created    
-        current_obs = self._create_observation()
-        self.observation = current_obs
+        # Get the new observation
+        (
+            pressures_ago,
+            pressures_antago,
+            joint_positions,
+            joint_velocities,
+        ) = self._pressure_commands.read()
 
-        q = self.observation.joint_positions
-        qd = self.observation.joint_velocities
-        next_pid_command = self.controller.peek_next_command(q, qd, step_mod = 0) #operates at t+1 since last next_command updated it 
+        next_pid_command = self.controller.peek_next_command(joint_positions, joint_velocities, step_mod = 0) #operates at t+1 since last next_command updated it 
+        q_des, qd_des = self.controller.peek_next_desired_values()
+        # observation instance
+        observation = _Observation(
+            joint_positions,
+            joint_velocities,
+            _convert_pressures_out(pressures_ago, pressures_antago),
+            [ag-at for ag,at in zip(pressures_ago, pressures_antago)],
+            [des - q for des,q in zip(q_des, joint_positions)],
+            [des - qd for des,qd in zip(qd_des, joint_velocities)],
+            next_pid_command,
+        )
 
-
+        self.observation = observation
         # returning an observation
-        return current_obs
+        return observation
 
     def create_position_controller(self, q_current, qd_desired, q_target):
         # configuration for the controller
@@ -792,13 +805,13 @@ class HysrOneBall_single_robot:
             qd = self.observation.joint_velocities
             # applying the controller to get the pressure to set
             # pd_pressures = self.controller.next(q, qd)
-            command = self.controller.next_command(q, qd, step_mod = 0 ) #-1 because step was updated in next command before (TEST ONLY)
+            pid_command = self.controller.next_command(q, qd, step_mod = 0 ) #-1 because step was updated in next command before (TEST ONLY)
             # pd_pressures2 = self.controller.convert_command_to_pressures(command)
         else:
             print("Controller reached position, do something HERE") #what happens when there is nothing left
 
         #2. Add pressures/torques
-        command = [c+pi for c,pi in zip(command, command_policy)]
+        command = [c+pi for c,pi in zip(pid_command, command_policy)]
 
         #3. Convert torques to pressure using heuristic
         pressures = self.controller.convert_command_to_pressures(command)
@@ -815,7 +828,10 @@ class HysrOneBall_single_robot:
         else:
             # Should start acting now in the background if not accelerated time
             self._pressure_commands.set(pressures, burst=False)
-            self.frequency_manager.wait() # adding here
+            waited = self.frequency_manager.wait() # adding here
+            print("Waited for : ",waited)
+            if waited<0:
+                print("Failed to meet algo frequency")
 
         # # sending mirroring state to simulated robot(s)
         # for mirroring_ in self._mirrorings:
@@ -854,18 +870,22 @@ class HysrOneBall_single_robot:
             joint_velocities,
         ) = self._pressure_commands.read()
 
-        q = self.observation.joint_positions
-        qd = self.observation.joint_velocities
+        q = joint_positions
+        qd = joint_velocities
         next_pid_command = self.controller.peek_next_command(q, qd, step_mod = 0) #operates at t+1 since last next_command updated it 
 
+        q_des, qd_des = self.controller.peek_next_desired_values()
         # observation instance
         observation = _Observation(
             joint_positions,
             joint_velocities,
             _convert_pressures_out(pressures_ago, pressures_antago),
-            # self._ball_status.ball_position,
-            # self._ball_status.ball_velocity,
+            [ag-at for ag,at in zip(pressures_ago, pressures_antago)],
+            [des - q for des,q in zip(q_des,joint_positions)],
+            [des - qd for des,qd in zip(qd_des, joint_velocities)],
+            next_pid_command,
         )
+
 
         self.observation = observation
         # checking if episode is over
@@ -885,7 +905,7 @@ class HysrOneBall_single_robot:
         # (reset will set this back to True)
         self._first_episode_step = False
 
-        # exporting step frequency
+        # exporting step frequency ---- WHAT IS THIS ? ANYTHING TO DO WITH FREQ MANAGER?
         if self._frequency_monitoring_step:
             self._frequency_monitoring_step.ping()
             self._frequency_monitoring_step.share()
@@ -895,11 +915,12 @@ class HysrOneBall_single_robot:
 
         #logging
         logs = {
-            'obs_next':observation.copy(),
+            'obs_next':observation,
             'action':command_policy.copy(),
-            'pd_command':command.copy(),
-            'pressure': pressures.copy(),
-            'reward':reward.copy(),
+            'pid_command':pid_command.copy(),
+            'full_command':command.copy(),
+            'pressure_command': pressures.copy(),
+            'reward':reward,
             'episode_over': episode_over
         }
 
