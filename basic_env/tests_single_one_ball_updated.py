@@ -3,6 +3,7 @@
 import logging
 import o80
 import context
+from plotting import plot_values
 from learning_table_tennis_from_scratch.hysr_one_ball import (
     HysrOneBall,
     HysrOneBallConfig,
@@ -12,7 +13,7 @@ from one_ball_alt import HysrOneBall_single_robot
 from learning_table_tennis_from_scratch.rewards import JsonReward
 from learning_table_tennis_from_scratch.jsonconfig import get_json_config
     
-
+import numpy as np
 
 logging.basicConfig(format="hysr_one_ball_swing | %(message)s", level=logging.INFO)
 # reward_config_path, hysr_config_path = _configure()
@@ -26,7 +27,7 @@ hysr_config = HysrOneBallConfig.from_json(hysr_config_path)
 reward_function = JsonReward.get(reward_config_path)
 algo_time_step = hysr_config.algo_time_step
 
-hysr = HysrOneBall_single_robot(hysr_config, reward_function)
+hysr = HysrOneBall_single_robot(hysr_config, reward_function, logs = True)
 
 # trajectory_index = 49
 # hysr.set_ball_behavior(index=trajectory_index)
@@ -40,8 +41,8 @@ hysr.reset()
 # wait_pressures = [0,0,0,0,0,0,0,0]
 
 action = [0,0,0,0]
-
-for episode in range(3):
+data_iter = {}
+for episode in range(1):
     print("EPISODE", episode)
     running = True                                                                                                                                                                                                                                                                                                                                                                                                                               
     nb_steps = 0
@@ -50,10 +51,26 @@ for episode in range(3):
             observation, reward, reset, log = hysr.step(action)
         else:
             observation, reward, reset, log = hysr.step(action)
-        print(f"{nb_steps} : Obs = {observation.joint_positions} | reward = {reward}")
+        print(f"{nb_steps} : Obs = {observation[:4]} | reward = {reward}")
 
         running = not reset
         nb_steps += 1
+    logs = hysr.dump_logger()
+    data_iter[episode] = logs
     hysr.reset()
 
+    #Trajectory - Metrics
+    joint_tracking_error = np.sqrt(np.mean((logs['joint_pos'][1:] - logs['joint_pos_des'][:-1])**2, axis=0))
+    print("\n\n")
+    print(f"Pos tracking error joint-wise : ", joint_tracking_error)
+    print(f"RMSE1 (mean of jointwise error) = {joint_tracking_error.mean():.6f}")
+
+
 hysr.close()
+
+# Plots
+plot_values(dof = 4, joint_pos = logs['joint_pos'][1:], des_joint_pos = logs['joint_pos_des'][:-1])
+plot_values(dof = 4, pid_commands = logs['pid_command'][1:])
+
+
+

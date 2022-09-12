@@ -16,7 +16,8 @@ from pam_mujoco import mirroring
 from my_pd_controller import MyPositionController
 from learning_table_tennis_from_scratch import configure_mujoco
 from learning_table_tennis_from_scratch import robot_integrity
-
+import numpy as np
+import math
 
 SEGMENT_ID_BALL = pam_mujoco.segment_ids.ball
 SEGMENT_ID_GOAL = pam_mujoco.segment_ids.goal
@@ -167,11 +168,24 @@ class _Observation:
         self.joint_vel_diff = joint_vel_diff
         self.pd_command = pd_command
 
+    def flatten(self):
+        obs = (self.joint_positions +
+            self.joint_velocities+
+            self.pressures+
+            self.pressure_diff+
+            self.joint_pos_diff+
+            self.joint_vel_diff+
+            self.pd_command
+        )
+        return obs
+
 
 class HysrOneBall_single_robot:
-    def __init__(self, hysr_config, reward_function):
+    def __init__(self, hysr_config, reward_function, logs=False):
 
         self._hysr_config = hysr_config
+        self.logs = logs
+        self.logger = []
 
         # we will track the episode number
         self._episode_number = -1
@@ -433,29 +447,29 @@ class HysrOneBall_single_robot:
     #         line=line, index=index, random=random
     #     )
 
-    def _create_observation(self):
-        (
-            pressures_ago,
-            pressures_antago,
-            joint_positions,
-            joint_velocities,
-        ) = self._pressure_commands.read()
-        # ball_position, ball_velocity = self._ball_communication.get()
+    # def _create_observation(self):
+    #     (
+    #         pressures_ago,
+    #         pressures_antago,
+    #         joint_positions,
+    #         joint_velocities,
+    #     ) = self._pressure_commands.read()
+    #     # ball_position, ball_velocity = self._ball_communication.get()
 
-        self.des_q = self.q_trajectory[self._step_number]
-        self.des_dq = self.dq_trajectory[self._step_number]
+    #     self.des_q = self.q_trajectory[self._step_number]
+    #     self.des_dq = self.dq_trajectory[self._step_number]
 
-        observation = _Observation(
-            joint_positions,
-            joint_velocities,
-            _convert_pressures_out(pressures_ago, pressures_antago),
-            pressures_ago - pressures_antago,
-            self.des_q - joint_positions,
-            self.des_dq - joint_velocities,
-            #PD action
+    #     observation = _Observation(
+    #         joint_positions,
+    #         joint_velocities,
+    #         _convert_pressures_out(pressures_ago, pressures_antago),
+    #         pressures_ago - pressures_antago,
+    #         self.des_q - joint_positions,
+    #         self.des_dq - joint_velocities,
+    #         #PD action
 
-        )
-        return observation
+    #     )
+    #     return observation.flatten()
 
     def get_robot_iteration(self):
         return self._pressure_commands.get_iteration()
@@ -579,6 +593,7 @@ class HysrOneBall_single_robot:
 
     def reset(self):
 
+        
         # what happens during reset does not correspond
         # to any episode (-1 means: no active episode)
         self._share_episode_number(-1)
@@ -638,7 +653,6 @@ class HysrOneBall_single_robot:
         #     ball.handle.activate_contact(ball.segment_id)
 
         time.sleep(0.1)
-
         # resetting ball info, e.g. min distance ball/racket, etc
         # self._ball_status.reset()
         # for ball in self._extra_balls:
@@ -658,6 +672,7 @@ class HysrOneBall_single_robot:
                 )
 
         # a new episode starts
+        self.reset_logger()
         self._step_number = 0
         self._episode_number += 1
         self._share_episode_number(self._episode_number)
@@ -669,9 +684,15 @@ class HysrOneBall_single_robot:
             joint_positions,
             joint_velocities,
         ) = self._pressure_commands.read()
+
+        # SET TARGETS
+        # desired positions
+        pi4 = math.pi/4.0
+        pi6 = math.pi/6.0
         q_current = joint_positions
-        q_target = [1,1,1,1]
-        qd_desired = [0.1, 0.1, 0.1, 0.1]  # radian per seconds
+        q_target = [-pi4,-pi6,+pi6,+pi6]
+        qd_desired = [0.5] *4 # radian per seconds
+
         # the position controller
         self.create_position_controller(q_current, qd_desired, q_target)
 
@@ -697,16 +718,37 @@ class HysrOneBall_single_robot:
         )
 
         self.observation = observation
+
+        # #logging
+        # logs = {
+        #     'obs_next':observation,
+        #     'obs_des':q_des.copy(),
+        #     'obs_vel_des':qd_des.copy(),
+        #     'action':0,
+        #     'pid_command':pid_command.copy(),
+        #     'full_command':command.copy(),
+        #     'pressure_command': pressures.copy(),
+        #     'reward':reward,
+        #     'episode_over': episode_over
+        # }
+
+        # self.log_data(logs)
         # returning an observation
-        return observation
+        return observation.flatten()
 
     def create_position_controller(self, q_current, qd_desired, q_target):
         # configuration for the controller
-        KP = [0.8, -3.0, 1.2, -1.0]
-        KI = [0.015, -0.25, 0.02, -0.05]
-        KD = [0.04, -0.09, 0.09, -0.09]
-        NDP = [-0.3, -0.5, -0.34, -0.48]
-        TIME_STEP = 0.01  # seconds
+        # KP = [0.8, -3.0, 1.2, -1.0]
+        # KI = [0.015, -0.25, 0.02, -0.05]
+        # KD = [0.04, -0.09, 0.09, -0.09]
+        # TIME_STEP = 0.01
+
+        #tuned
+        KP = [0.2,0.2,0.2,0.2]
+        KD = [0.02,0.02,0.02,0.02]
+        KI = [0.05,0.05,0.05,0.05]
+        NDP = [0.5,0.5,0.6,0.5]
+        TIME_STEP = 0.05
         # _, _, Q_CURRENT, _ = self._pressure_commands.read()
 
         # configuration for HYSR
@@ -915,7 +957,9 @@ class HysrOneBall_single_robot:
 
         #logging
         logs = {
-            'obs_next':observation,
+            'obs_next':observation.flatten().copy(),
+            'obs_des':q_des.copy(),
+            'obs_vel_des':qd_des.copy(),
             'action':command_policy.copy(),
             'pid_command':pid_command.copy(),
             'full_command':command.copy(),
@@ -924,9 +968,11 @@ class HysrOneBall_single_robot:
             'episode_over': episode_over
         }
 
+        if self.logs:
+            self.log_data(logs)
 
         # returning
-        return observation, reward, episode_over, logs
+        return observation.flatten(), reward, episode_over, logs
 
     def close(self):
         if self._robot_integrity is not None:
@@ -935,3 +981,43 @@ class HysrOneBall_single_robot:
         shared_memory.clear_shared_memory(SEGMENT_ID_EPISODE_FREQUENCY)
         shared_memory.clear_shared_memory(SEGMENT_ID_STEP_FREQUENCY)
         pass
+
+
+    def log_data(self, logs):
+        self.logger.append(logs)
+    
+
+    def dump_logger(self):
+        joint_pos = []
+        joint_vel= []
+        actions = []
+        rewards = []
+        pid_command = []
+        joint_pos_des = []
+        joint_vel_des = []
+        for items in self.logger:
+            joint_pos.append(items['obs_next'][:4].copy())
+            joint_vel.append(items['obs_next'][4:8].copy())
+            actions.append(items['action'].copy())
+            rewards.append(items['reward'])
+            pid_command.append(items['pid_command'].copy())
+            joint_pos_des.append(items['obs_des'].copy())
+            joint_vel_des.append(items['obs_vel_des'].copy())
+
+        all_data_np = {
+        'joint_pos' : np.array(joint_pos),
+        'joint_vel' : np.array(joint_vel),
+        'actions' : np.array(actions),
+        'rewards' : np.array(rewards),
+        'pid_command' : np.array(pid_command),
+        'joint_pos_des' : np.array(joint_pos_des),
+        'joint_vel_des':np.array(joint_vel_des)
+        }
+
+        self.reset_logger()
+
+        return all_data_np
+
+    def reset_logger(self):
+        self.logger= []
+

@@ -1,0 +1,229 @@
+# Send CONTROL UDP telegram structure
+# pack("=HHHHLffffffffffffffffffff",...
+
+""" TYPE SOCKET_FRAME_REC :
+    STRUCT
+        index                : WORD;                         (* current package number *)
+        notCloseSrv            : INT;                             (* = 0, then close server *)
+        controlMode            : enumControlMode;
+        reserve                : WORD;
+        timeMicroSecs        : UDINT;
+        data                : armSetpoints;                    (* Data to send *)
+    END_STRUCT
+END_TYPE
+TYPE enumControlMode : (
+        valveControl,
+        pressureControl,
+        positionControl,
+        periodicEndPosition,
+        calibration
+    ) ;
+END_TYPE
+TYPE armSetpoints :
+    STRUCT
+        set_J1_Angle        : REAL := 0.0;
+        set_J1_A            : MuscleSetpoints;
+        set_J1_B            : MuscleSetpoints;
+        set_J2_Angle        : REAL := 0.0;
+        set_J2_A            : MuscleSetpoints;
+        set_J2_B            : MuscleSetpoints;
+        set_J3_Angle        : REAL := 0.0;
+        set_J3_A            : MuscleSetpoints;
+        set_J3_B            : MuscleSetpoints;
+        set_J4_Angle        : REAL := 0.0;
+        set_J4_A            : MuscleSetpoints;
+        set_J4_B            : MuscleSetpoints;
+    END_STRUCT
+END_TYPE
+TYPE MuscleSetpoints :
+    STRUCT
+        valveSetpoint         : REAL := 5.0;
+        pressureSetpoint    : REAL := 0.0;
+    END_STRUCT
+END_TYPE """
+
+# Send PID UDP telegram structure
+'''
+myMsg = pack(
+        "=HLLffffffffffffffffffffffffffffffffffffffffffffffff",
+        i,  # H, index
+        2,  # L, telegram type
+        1,  # L, command
+        # J1A
+        700.0,  # f, P-Value
+        3000.0,  # f, I-Value
+        0.0,  # f, D-Value
+        0.01,  # f, TS
+        # J1B
+        700.0,  # f, P-Value
+        3000.0,  # f, I-Value
+        0.0,  # f, D-Value
+        0.01,  # f, TS
+        # J2A
+        600.0,  # f, P-Value
+        3000.0,  # f, I-Value
+        0.0,  # f, D-Value
+        0.01,  # f, TS
+        # J2B
+        600.0,  # f, P-Value
+        3000.0,  # f, I-Value
+        0.0,  # f, D-Value
+        0.01,  # f, TS
+        # J3A
+        550.0,  # f, P-Value
+        3000.0,  # f, I-Value
+        0.0,  # f, D-Value
+        0.01,  # f, TS
+        # J3B
+        550.0,  # f, P-Value
+        3000.0,  # f, I-Value
+        0.0,  # f, D-Value
+        0.01,  # f, TS
+        # J4A
+        500.0,  # f, P-Value
+        2000.0,  # f, I-Value
+        0.0,  # f, D-Value
+        0.01,  # f, TS
+        # J4B
+        500.0,  # f, P-Value
+        2000.0,  # f, I-Value
+        0.0,  # f, D-Value
+        0.01,  # f, TS
+        # Pos J1
+        2,  # f, P-Value
+        4,  # f, I-Value
+        0.1,  # f, D-Value
+        0.004,  # f, TS
+        # Pos J2
+        3,  # f, P-Value
+        6.5,  # f, I-Value
+        0.1,  # f, D-Value
+        0.004,  # f, TS
+        # Pos J3
+        5,  # f, P-Value
+        10,  # f, I-Value
+        0.1,  # f, D-Value
+        0.004,  # f, TS
+        # Pos J4
+        PressureA,  # f, P-Value
+        2,  # f, I-Value
+        0.01,  # f, D-Value
+        0.004,  # f, TS
+    )
+'''
+
+# Receive UDP telegram structure
+"""
+#   unpack("=LLLLLLLLLHHHHffffffffffffffffffffLlffffffLlffffffLlffffffLlffffffffffffffffffffffffffffffffffffffffffffffffffffffffLL",...
+
+TYPE SOCKET_FRAME_SEND :
+    STRUCT
+        indexControlTask            : UDINT;                         (* current package number *)
+        indexSetpointsCycle            : UDINT;                         (* current package number *)
+        indexUDPTelegram            : UDINT;                         (* current package number *)
+        notCloseSrv                    : INT;                             (* = 0, then close server *)
+        timeMicroSecsUDPSend        : UDINT;
+        timeMicroSecsLastUDPReceive    : UDINT;
+        data                        : armData;                        (* Data to send *)
+    END_STRUCT
+END_TYPE
+TYPE armData :
+    STRUCT
+        timeMicroSecsSensorData    : UDINT;
+        timeMicroSecsActuatorData : UDINT;
+        timeMicroSecsSetpoints    : UDINT;
+        operationMode            : enumOperationMode;
+        controlMode                : enumControlMode;
+        pressureControlMode        : enumPressureControlMode;
+        bQuickStopPushed        : WORD;
+        setPoints_control        : armSetpoints;                    (* Currently applied joint setpoints *)
+        J1                        : jointData;
+        J2                        : jointData;
+        J3                        : jointData;
+        J4                        : jointData;
+        rPIDSettings            : PIDData;                        (* PID settings for all joints. *)
+        SupplyPressure             : REAL := 0.0;
+        RingPressure             : REAL := 0.0;
+        errInformation            : ErrorInformation;
+    END_STRUCT
+END_TYPE
+TYPE armSetpoints :
+    STRUCT
+        set_J1_Angle        : REAL := 0.0;
+        set_J1_A            : MuscleSetpoints;
+        set_J1_B            : MuscleSetpoints;
+        set_J2_Angle        : REAL := 0.0;
+        set_J2_A            : MuscleSetpoints;
+        set_J2_B            : MuscleSetpoints;
+        set_J3_Angle        : REAL := 0.0;
+        set_J3_A            : MuscleSetpoints;
+        set_J3_B            : MuscleSetpoints;
+        set_J4_Angle        : REAL := 0.0;
+        set_J4_A            : MuscleSetpoints;
+        set_J4_B            : MuscleSetpoints;
+    END_STRUCT
+END_TYPE
+TYPE jointData :
+    STRUCT
+        dwErrors            : DWORD := 0;        (*     .0        0x01        Encoder error
+                                                     .1-.7                Reserve
+                                                     .8        0x10        Pressure A open circuit
+                                                     .9        0x20        Pressure A other error
+                                                     .10        0x40        Valve A open circuit
+                                                     .11        0x80        Valve A other error
+                                                     .12        0x100        Tendon A broken
+                                                     .13-.15                Reserve
+                                                     .16        0x1000        Pressure B open circuit
+                                                     .17        0x2000        Pressure B other error
+                                                     .18        0x4000        Valve B open circuit
+                                                     .19        0x8000        Valve B other error
+                                                     .20        0x10000        Tendon B broken
+                                                     .21-.31                Reserve *)
+        encoderValue        : DINT := 0;        (* [inc]    Current encoder value of joint *)
+        jointAngle            : REAL := 0.0;        (* [°]        Current angle of joint *)
+        jointAngleSpeed        : REAL := 0.0;        (* [°]        Current angle speed of joint *)
+        pressure_A             : REAL := 0.0;        (* [bar]    Current pressure of muscle A*)
+        valvePosition_A        : REAL := 0.0;        (* [V]        Current set value for valve A*)
+        pressure_B             : REAL := 0.0;        (* [bar]    Current pressure of muscle B*)
+        valvePosition_B        : REAL := 0.0;        (* [V]        Current set value for valve A*)
+    END_STRUCT
+END_TYPE
+TYPE PIDData :
+    STRUCT
+        J1_A                        : PID_Values;
+        J1_B                        : PID_Values;
+        J2_A                        : PID_Values;
+        J2_B                        : PID_Values;
+        J3_A                        : PID_Values;
+        J3_B                        : PID_Values;
+        J4_A                        : PID_Values;
+        J4_B                        : PID_Values;
+        Angle_J1                    : PID_Values;
+        Angle_J2                    : PID_Values;
+        Angle_J3                    : PID_Values;
+        Angle_J4                    : PID_Values;
+    END_STRUCT
+END_TYPE
+TYPE PID_Values :    ffffffff ffffffff ffffffff ffffffff ffffffffffffffff
+    STRUCT
+        PValue                : REAL := 6.0;   (* proportional gain [%] *)
+        IValue                : REAL := 1.0;   (* integrator gain [%] *)
+        DValue                : REAL := 0.1;   (* differentiator gain [%] *)
+        TS                    : REAL := 0.004;   (* sample time [s] *)
+    END_STRUCT
+END_TYPE
+TYPE ErrorInformation :
+    STRUCT
+        SystemErrors        : DWORD := 0;        (*     .0        0x01    TBD
+                                                     .2-.31            Reserve *)
+        IOHardwareErrors    : DWORD := 0;        (*     .0        0x01    Card 1 power supply failure
+                                                     .1        0x02    Card 1 other failure
+                                                     .2        0x04    Card 2 power supply failure
+                                                     .3        0x08    Card 2 other failure
+                                                     .4        0x10    Card 3 power supply failure
+                                                     .5        0x20    Card 3 other failure
+                                                     .6-.31            Reserve *)
+
+    END_STRUCT
+END_TYPE
+"""

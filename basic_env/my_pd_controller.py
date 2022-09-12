@@ -238,7 +238,7 @@ class MyPositionController:
         self._step = self._step + step_mod
         r = list(map(self._next_command_peek, range(len(q)), q, qd, [self._step] * len(q)))
         # self._step = self._step + 1
-        return r
+        return r        
 
     def peek_next_next_command(self, q, qd):
         next_step = min(self._step + 1, len(self._q_trajectories)-1)
