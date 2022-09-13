@@ -415,6 +415,7 @@ class HysrOneBall_single_robot:
         self.last_observation = None
         self.controller = None
         self.frequency_manager = None
+        self.command = None
 
     def get_starting_pressures(self):
         return self._hysr_config.starting_pressures
@@ -748,7 +749,7 @@ class HysrOneBall_single_robot:
         KD = [0.02,0.02,0.02,0.02]
         KI = [0.05,0.05,0.05,0.05]
         NDP = [0.5,0.5,0.6,0.5]
-        TIME_STEP = 0.05
+        TIME_STEP = self._hysr_config.algo_time_step
         # _, _, Q_CURRENT, _ = self._pressure_commands.read()
 
         # configuration for HYSR
@@ -903,7 +904,6 @@ class HysrOneBall_single_robot:
         # if self._ball_status.min_position_ball_target is not None:
         #     self._hit_point.set(self._ball_status.min_position_ball_target, [0, 0, 0]
 
-
         # Get the new observation
         (
             pressures_ago,
@@ -912,11 +912,15 @@ class HysrOneBall_single_robot:
             joint_velocities,
         ) = self._pressure_commands.read()
 
+        #get reward
+        reward = self.get_reward(joint_positions, joint_velocities,command)
+
         q = joint_positions
         qd = joint_velocities
         next_pid_command = self.controller.peek_next_command(q, qd, step_mod = 0) #operates at t+1 since last next_command updated it 
 
         q_des, qd_des = self.controller.peek_next_desired_values()
+
         # observation instance
         observation = _Observation(
             joint_positions,
@@ -928,20 +932,9 @@ class HysrOneBall_single_robot:
             next_pid_command,
         )
 
-
         self.observation = observation
         # checking if episode is over
         episode_over = self._episode_over()
-        reward = 0
-
-        # if episode over, computing related reward
-        if episode_over:
-            # reward = self._reward_function(
-            #     self._ball_status.min_distance_ball_racket,
-            #     self._ball_status.min_distance_ball_target,
-            #     self._ball_status.max_ball_velocity,
-            # )
-            reward = 0
 
         # next step can not be the first one
         # (reset will set this back to True)
@@ -981,6 +974,15 @@ class HysrOneBall_single_robot:
         shared_memory.clear_shared_memory(SEGMENT_ID_EPISODE_FREQUENCY)
         shared_memory.clear_shared_memory(SEGMENT_ID_STEP_FREQUENCY)
         pass
+
+    def get_reward(self, joint_positions, joint_velocities, command):
+        last_velocities = np.array(self.observation.joint_velocities)
+        joint_velocities = np.array(joint_velocities)
+        joint_acc = (joint_velocities - last_velocities)/ self._hysr_config.algo_time_step
+
+        command_acc = np.array(command)
+        reward = -1*np.linalg.norm(joint_acc - command_acc)
+        return reward
 
 
     def log_data(self, logs):

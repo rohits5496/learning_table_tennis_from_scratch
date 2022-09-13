@@ -69,8 +69,9 @@ for episode in range(1):
 hysr.close()
 
 # Plots
-plot_values(dof = 4, joint_pos = logs['joint_pos'][1:], des_joint_pos = logs['joint_pos_des'][:-1])
-plot_values(dof = 4, pid_commands = logs['pid_command'][1:])
+# plot_values(dof = 4, joint_pos = logs['joint_pos'][1:], des_joint_pos = logs['joint_pos_des'][:-1])
+# plot_values(dof = 4, pid_commands = logs['pid_command'][1:])
+plot_values(dof = 1, rewards = logs['rewards'].reshape(-1,1))
 
 
 
