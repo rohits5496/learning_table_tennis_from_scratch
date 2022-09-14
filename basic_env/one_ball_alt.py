@@ -18,6 +18,9 @@ from learning_table_tennis_from_scratch import configure_mujoco
 from learning_table_tennis_from_scratch import robot_integrity
 import numpy as np
 import math
+import gym
+from gym import spaces
+from gym.spaces import Box as SamplingSpace
 
 SEGMENT_ID_BALL = pam_mujoco.segment_ids.ball
 SEGMENT_ID_GOAL = pam_mujoco.segment_ids.goal
@@ -177,12 +180,13 @@ class _Observation:
             self.joint_vel_diff+
             self.pd_command
         )
+        obs = np.array(obs, dtype='float32')
         return obs
 
 
-class HysrOneBall_single_robot:
+class HysrOneBall_single_robot(gym.Env):
     def __init__(self, hysr_config, reward_function, logs=False):
-
+        super(HysrOneBall_single_robot, self).__init__()
         self._hysr_config = hysr_config
         self.logs = logs
         self.logger = []
@@ -411,11 +415,16 @@ class HysrOneBall_single_robot:
         # and set values to all simulated robot via self._mirrorings)
         # source of mirroring in pam_mujoco.mirroring.py
         # pam_mujoco.mirroring.align_robots(self._pressure_commands, self._mirrorings)
-        self.observatin = None
+        self.observation = None
         self.last_observation = None
         self.controller = None
         self.frequency_manager = None
         self.command = None
+
+        low = -np.inf * np.ones(shape = (32,))
+        high = np.inf * np.ones(shape = (32,))
+        self.observation_space = SamplingSpace(low=low, high=high, dtype='float32')
+        self.action_space = spaces.Box(low = -1, high=1, shape = (4,), dtype = 'float32')
 
     def get_starting_pressures(self):
         return self._hysr_config.starting_pressures
@@ -535,11 +544,19 @@ class HysrOneBall_single_robot:
         # synchronization with the simulated robot(s).
 
         # configuration for the controller
-        KP = [0.8, -3.0, 1.2, -1.0]
-        KI = [0.015, -0.25, 0.02, -0.05]
-        KD = [0.04, -0.09, 0.09, -0.09]
-        NDP = [-0.3, -0.5, -0.34, -0.48]
-        TIME_STEP = 0.01  # seconds
+        # KP = [0.8, -3.0, 1.2, -1.0]
+        # KI = [0.015, -0.25, 0.02, -0.05]
+        # KD = [0.04, -0.09, 0.09, -0.09]
+        # NDP = [-0.3, -0.5, -0.34, -0.48]
+        # TIME_STEP = 0.01  # seconds
+
+        # for TS = 0.05
+        KP = [0.2,0.2,0.2,0.2]
+        KD = [0.02,0.02,0.02,0.02]
+        KI = [0.05,0.05,0.05,0.05]
+        NDP = [0.5,0.5,0.6,0.5]
+        TIME_STEP = self._hysr_config.algo_time_step
+
         QD_DESIRED = [0.7, 0.7, 0.7, 0.7]  # radian per seconds
         _, _, Q_CURRENT, _ = self._pressure_commands.read()
 
@@ -833,7 +850,7 @@ class HysrOneBall_single_robot:
         # pressures = _convert_pressures_in(list(action))
 
         #getting action in command values
-        command_policy = action
+        command_policy = list(action)
         
         ## Traj Following :
         # 1. Get the PD controller value in torque command

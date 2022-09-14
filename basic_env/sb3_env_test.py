@@ -43,6 +43,9 @@ hysr = HysrOneBall_single_robot(hysr_config, reward_function, logs = True)
 obs = hysr.reset()
 
 print("example obs = ", obs)
-# print("obs shape = ", obs.shape)
+print("SAMPLES")
+print("obs sample = ",hysr.observation_space.sample())
+print("Act sample = ",hysr.action_space.sample())
 
 check_env(hysr)
+# print("obs shape = ", obs.shape)
