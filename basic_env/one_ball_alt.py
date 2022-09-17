@@ -889,7 +889,7 @@ class HysrOneBall_single_robot(gym.Env):
             # Should start acting now in the background if not accelerated time
             self._pressure_commands.set(pressures, burst=False)
             waited = self.frequency_manager.wait() # adding here
-            print("Waited for : ",waited)
+            # print("Waited for : ",waited)
             if waited<0:
                 print("Failed to meet algo frequency")
 
@@ -1012,6 +1012,7 @@ class HysrOneBall_single_robot(gym.Env):
         actions = []
         rewards = []
         pid_command = []
+        command = []
         joint_pos_des = []
         joint_vel_des = []
         for items in self.logger:
@@ -1020,6 +1021,7 @@ class HysrOneBall_single_robot(gym.Env):
             actions.append(items['action'].copy())
             rewards.append(items['reward'])
             pid_command.append(items['pid_command'].copy())
+            command.append(items['full_command'].copy())
             joint_pos_des.append(items['obs_des'].copy())
             joint_vel_des.append(items['obs_vel_des'].copy())
 
@@ -1028,6 +1030,7 @@ class HysrOneBall_single_robot(gym.Env):
         'joint_vel' : np.array(joint_vel),
         'actions' : np.array(actions),
         'rewards' : np.array(rewards),
+        'command' : np.array(command),
         'pid_command' : np.array(pid_command),
         'joint_pos_des' : np.array(joint_pos_des),
         'joint_vel_des':np.array(joint_vel_des)

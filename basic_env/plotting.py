@@ -17,6 +17,6 @@ def plot_values(plot_name=None, dof = 4,**kwargs):
         
     if plot_name is not None:
         plt.savefig("plots/"+plot_name, dpi=100)    
-    
-    plt.show()
+    else:
+        plt.show()
     

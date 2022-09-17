@@ -1,0 +1,6 @@
+Sat Sep 17 19:09:53 2022
+WARNING: Unknown warning type Time = 4.7070.
+
+Sat Sep 17 19:09:53 2022
+WARNING: Nan, Inf or huge value in QPOS at DOF 0. The simulation is unstable. Time = 4.7080.
+
