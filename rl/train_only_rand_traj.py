@@ -34,8 +34,8 @@ from learning_table_tennis_from_scratch.rewards import JsonReward
 from basic_env.plotting import plot_values
 
 NUM_EVALS = 1
-TRAIN_MODEL = True
-# LOAD_MODEL = False
+TRAIN_MODEL = False
+LOAD_MODEL = False
 EPOCHS= 10 #100
 num_ep_training = 1 #40
 SEED = np.random.randint(10)
@@ -100,6 +100,7 @@ def eval_model(env, model, render = False, deterministic=True, gamma=0.0, num_ep
             
             # print(action)
             obs, r, done, logs = env.step(action)
+            r = env.get_original_reward()
             rewards.append(r)
             logs_list1.append(logs)
             # if done:
@@ -113,7 +114,7 @@ def eval_model(env, model, render = False, deterministic=True, gamma=0.0, num_ep
         all_rewards.append(sum_ep_reward)
 
     all_rewards = np.array(all_rewards)
-    return np.mean(all_rewards), np.std(all_rewards), all_rewards, logs_list2
+    return np.mean(all_rewards), np.std(all_rewards), all_rewards, logs_list2, rewards
 
 
 def unpack_logs(log_list):
@@ -244,24 +245,25 @@ model = PPO('MlpPolicy', env, verbose=0, gamma=GAMMA,
 #     eval_env.training=False
 #     eval_env.norm_reward = False
     
-# if LOAD_MODEL:
-#     #loads normalization constants
-#     # env = VecNormalize.load(stats_path, env) #load stats
-#     # env.training=False
-#     # env.norm_reward = False
+if LOAD_MODEL:
+    #loads normalization constants
+    env = VecNormalize.load(stats_path, env) #load stats
+    env.training=False
+    env.norm_reward = False
 
-#     # Load the agent
-#     model = PPO.load(save_dir + "ppo_panda_tracking_random", env=env, device=DEVICE)
+    # Load the agent
+    model = PPO.load(save_dir + "ppo_pam_single_traj", env=env, device=DEVICE)
 
 
 # %% 
 # Random Agent, before training
 print("Random Agent")#eval with random policy
-# avg_eval_rew, std_eval_rew = evaluate_policy(model, env, n_eval_episodes = NUM_EVALS, deterministic= True)
+
 # print("Average reward with random policy = ",avg_eval_rew)   
 
 ## Random agent manual eval
-avg_eval_rew, std_eval_rew, all_rewards, logs_list = eval_model(env, model, render=False, gamma=GAMMA, num_episodes = NUM_EVALS)
+avg_eval_rew, std_eval_rew, all_rewards, logs_list,rew = eval_model(env, model, render=False, gamma=GAMMA, num_episodes = NUM_EVALS)
+avg_eval_rew2, std_eval_rew2 = evaluate_policy(model, env, n_eval_episodes = NUM_EVALS, deterministic= True)
 
 pos_error =[]
 norm_ff_arr = []
@@ -282,7 +284,7 @@ for ev in range(NUM_EVALS):
     acc = np.diff(logs['joint_vel'],axis=0)/DT #i = i+1 - i             
     all_fb_lin_error = acc - logs['command'][1:]
     fb_lin_error_mean = np.sqrt(np.mean(all_fb_lin_error**2, axis=0))
-    fb_lin_mean_error = fb_lin_error_mean.mean()
+    fb_lin_mean_error = np.mean(np.linalg.norm(all_fb_lin_error, axis=0))
     fb_lin_arr.append(fb_lin_mean_error)
     print(f"FB Linearization error joint-wise : ", fb_lin_error_mean)
     print(f"FB RMSE1 (mean of jointwise FB error) = {fb_lin_error_mean.mean():.6f}")
@@ -301,10 +303,16 @@ pos_tracking_err = np.mean(pos_error)
 fb_lin_err = np.mean(fb_lin_arr)
 
 print("Rand "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew)
+print("Rand eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2)
+
+
 
 # %% Training
 max_val_reward = -np.inf
 best_pos_error = np.inf
+
+
+
 best_acc_error = np.inf
 total_timesteps = num_ep_training*EPISODE_LENGTH
 plot_epoch = 2
@@ -377,18 +385,18 @@ if TRAIN_MODEL:
                     # "acc_tracking_error": np.mean(acc_error),
                     "norm_action":action_norm,
                     "fb_lin_error":fb_lin_err,
-                    # "traj1": pos_error[0],
-                    # "traj2":pos_error[1],
-                    # "traj3":pos_error[2],
-                    # "traj4":pos_error[3],
-                    # "traj5":pos_error[4],
+                    'err_joint0':joint_tracking_error[0],
+                    'err_joint1':joint_tracking_error[1],
+                    'err_joint2':joint_tracking_error[2],
+                    'err_joint3':joint_tracking_error[3],
+                    'fb_err_joint0':fb_lin_error_mean[0],
+                    'fb_err_joint1':fb_lin_error_mean[1],
+                    'fb_err_joint2':fb_lin_error_mean[2],
+                    'fb_err_joint3':fb_lin_error_mean[3],
                     'last_train_reward':last_training_rew,
                     'avg_eval_reward':avg_eval_rew,
                     'std_eval_reward':std_eval_rew,
-                    # 'avg_eval_reward':avg_eval_rew,
-                    # 'std_eval_reward':std_eval_rew,
-                    # "reward_term1":rew_term1,
-                    # "reward_torque_penalty":rew_torque_penalty
+
                     })
             
         if avg_eval_rew>max_val_reward:
