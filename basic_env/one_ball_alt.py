@@ -185,7 +185,7 @@ class _Observation:
 
 
 class HysrOneBall_single_robot(gym.Env):
-    def __init__(self, hysr_config, reward_function, logs=False):
+    def __init__(self, hysr_config, reward_function, logs=False, reward_type = 'fb_lin'):
         super(HysrOneBall_single_robot, self).__init__()
         self._hysr_config = hysr_config
         self.logs = logs
@@ -197,6 +197,7 @@ class HysrOneBall_single_robot(gym.Env):
         # we will track the step number (reset at the start
         # of each episode)
         self._step_number = -1
+        self.reward_type = reward_type
 
         # we end an episode after a fixed number of steps
         self._nb_steps_per_episode = hysr_config.nb_steps_per_episode
@@ -424,7 +425,7 @@ class HysrOneBall_single_robot(gym.Env):
         low = -np.inf * np.ones(shape = (32,))
         high = np.inf * np.ones(shape = (32,))
         self.observation_space = SamplingSpace(low=low, high=high, dtype='float32')
-        self.action_space = spaces.Box(low = -1, high=1, shape = (4,), dtype = 'float32')
+        self.action_space = spaces.Box(low = -0.1, high=0.1, shape = (4,), dtype = 'float32')
 
     def get_starting_pressures(self):
         return self._hysr_config.starting_pressures
@@ -865,7 +866,12 @@ class HysrOneBall_single_robot(gym.Env):
             qd = self.observation.joint_velocities
             # applying the controller to get the pressure to set
             # pd_pressures = self.controller.next(q, qd)
-            pid_command = self.controller.next_command(q, qd, step_mod = 0 ) #-1 because step was updated in next command before (TEST ONLY)
+            
+            # recompute
+            # pid_command = self.controller.next_command(q, qd, step_mod = 0 ) #-1 because step was updated in next command before (TEST ONLY)
+            # or use computed value and update step
+            pid_command = self.observation.pd_command
+            self.controller._step += 1 
             # pd_pressures2 = self.controller.convert_command_to_pressures(command)
         else:
             print("Controller reached position, do something HERE") #what happens when there is nothing left
@@ -993,14 +999,21 @@ class HysrOneBall_single_robot(gym.Env):
         pass
 
     def get_reward(self, joint_positions, joint_velocities, command):
-        last_velocities = np.array(self.observation.joint_velocities)
-        joint_velocities = np.array(joint_velocities)
-        joint_acc = (joint_velocities - last_velocities)/ self._hysr_config.algo_time_step
+        
+        if self.reward_type == "fb_lin":
+            last_velocities = np.array(self.observation.joint_velocities)
+            joint_velocities = np.array(joint_velocities)
+            joint_acc = (joint_velocities - last_velocities)/ self._hysr_config.algo_time_step
 
-        command_acc = np.array(command)
-        reward = -1*np.linalg.norm(joint_acc - command_acc)
+            command_acc = np.array(command)
+            reward = -1*np.linalg.norm(joint_acc - command_acc)
+        else:
+            des_joint_pos = np.array(self.observation.joint_pos_diff) + np.array(self.observation.joint_positions)
+            current_joint_pos = np.array(joint_positions)
+            reward = -1*np.linalg.norm(des_joint_pos - current_joint_pos)
+            
         return reward
-
+    
 
     def log_data(self, logs):
         self.logger.append(logs)

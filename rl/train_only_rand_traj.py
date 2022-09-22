@@ -34,10 +34,10 @@ from learning_table_tennis_from_scratch.rewards import JsonReward
 from basic_env.plotting import plot_values
 
 NUM_EVALS = 1
-TRAIN_MODEL = False
+TRAIN_MODEL = True
 LOAD_MODEL = False
-EPOCHS= 10 #100
-num_ep_training = 1 #40
+EPOCHS= 2 #100
+num_ep_training = 2 #40
 SEED = np.random.randint(10)
 log = True
 DEVICE = 'cpu'
@@ -45,10 +45,11 @@ DEVICE = 'cpu'
 TARGET_KL = 10.0
 LOG_STD = -1
 PLOTS = False
+plot_epoch = 20
 
 
-log_dir = "local_logs" #local
-# log_dir = "/home/temp_store/rohit_sonker/" #remote
+# log_dir = "local_logs" #local
+log_dir = "/home/temp_store/rohit_sonker/" #remote
 # log_dir = "/home/rohit/Documents/local_logs/"
 
 ####################################################
@@ -94,7 +95,7 @@ def eval_model(env, model, render = False, deterministic=True, gamma=0.0, num_ep
             if predict_zero or np.isnan(obs).any():
                 if np.isnan(obs).any():
                     print("****------------- Nan obs detected, predicting zero ff action----------****")
-                action = np.array([0,0,0,0,0,0,0]).reshape(1,7)
+                action = np.array([0,0,0,0]).reshape(1,4)
             else:
                 action, _ = model.predict(obs, deterministic=deterministic)
             
@@ -212,7 +213,8 @@ print(
 "\nusing configuration files:\n- {}\n- {}\n".format(reward_config_path, hysr_config_path)
 )
 
-env = HysrOneBall_single_robot(hysr_config, reward_function, logs = True)
+env = HysrOneBall_single_robot(hysr_config, reward_function, logs = True, reward_type='fb_lin')
+print("Action Space org = ", env.action_space)
 
 env = Monitor(env)
 env = NormalizeActionWrapper(env)
@@ -257,12 +259,65 @@ if LOAD_MODEL:
 
 # %% 
 # Random Agent, before training
+print("Zero Basline")#eval with random policy
+
+# print("Average reward with random policy = ",avg_eval_rew)   
+
+## Random agent manual eval
+avg_eval_rew, std_eval_rew, all_rewards, logs_list, r = eval_model(env, model, render=False, gamma=GAMMA, num_episodes = NUM_EVALS, predict_zero=True)
+# avg_eval_rew2, std_eval_rew2 = evaluate_policy(model, env, n_eval_episodes = NUM_EVALS, deterministic= True)
+
+pos_error =[]
+norm_ff_arr = []
+acc_error = []
+logs_array =[]
+fb_lin_arr = []
+
+for ev in range(NUM_EVALS):
+    logs = unpack_logs(logs_list[ev])
+    all_tracking_error = logs['joint_pos'][1:] - logs['joint_pos_des'][:-1]
+    joint_tracking_error = np.sqrt(np.mean((logs['joint_pos'][1:] - logs['joint_pos_des'][:-1])**2, axis=0))
+    tracking_mean_error = joint_tracking_error.mean()
+    pos_error.append(tracking_mean_error)
+    print("\n\n")
+    print(f"Pos tracking error joint-wise : ", joint_tracking_error)
+    print(f"RMSE1 (mean of jointwise error) = {joint_tracking_error.mean():.6f}")
+
+    acc = np.diff(logs['joint_vel'],axis=0)/DT #i = i+1 - i             
+    all_fb_lin_error = acc - logs['command'][1:]
+    # this is axis =0 hence joint-wise computation, to match reward set axis=1 (step wise) and later sum for whole episode
+    fb_lin_error_mean = np.sqrt(np.mean(all_fb_lin_error**2, axis=0))
+    fb_lin_mean_error = np.mean(np.linalg.norm(all_fb_lin_error, axis=0))
+    fb_lin_arr.append(fb_lin_mean_error)
+    print(f"FB Linearization error joint-wise : ", fb_lin_error_mean)
+    print(f"FB RMSE1 (mean of jointwise FB error) = {fb_lin_error_mean.mean():.6f}")
+
+    actions = logs['actions']
+    action_norm = np.linalg.norm(actions, axis=0)
+    print(f"FF norm = ",action_norm)
+
+if PLOTS:
+    plot_values(plot_name = f"rand_pos_error",dof = 4, pos_error = all_tracking_error)
+    plot_values(plot_name = f"rand_fb_lin_error",dof = 4, fb_lin_error = all_fb_lin_error)
+    plot_values(plot_name = f"rand_pid", dof = 4, pid_commands = logs['pid_command'][1:])
+    plot_values(plot_name = f"rand_reward",dof = 1, rewards = logs['rewards'].reshape(-1,1))
+    plot_values(plot_name = "rand_action", dof = 4, actions = actions)
+
+pos_tracking_err = np.mean(pos_error)
+fb_lin_err = np.mean(fb_lin_arr)
+
+print("Zero baseline "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew)
+# print("Rand eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2)
+
+
+
+# Random Agent, before training
 print("Random Agent")#eval with random policy
 
 # print("Average reward with random policy = ",avg_eval_rew)   
 
 ## Random agent manual eval
-avg_eval_rew, std_eval_rew, all_rewards, logs_list,rew = eval_model(env, model, render=False, gamma=GAMMA, num_episodes = NUM_EVALS)
+avg_eval_rew, std_eval_rew, all_rewards, logs_list, r = eval_model(env, model, render=False, gamma=GAMMA, num_episodes = NUM_EVALS)
 avg_eval_rew2, std_eval_rew2 = evaluate_policy(model, env, n_eval_episodes = NUM_EVALS, deterministic= True)
 
 pos_error =[]
@@ -283,6 +338,7 @@ for ev in range(NUM_EVALS):
 
     acc = np.diff(logs['joint_vel'],axis=0)/DT #i = i+1 - i             
     all_fb_lin_error = acc - logs['command'][1:]
+    # this is axis =0 hence joint-wise computation, to match reward set axis=1 (step wise) and later sum for whole episode
     fb_lin_error_mean = np.sqrt(np.mean(all_fb_lin_error**2, axis=0))
     fb_lin_mean_error = np.mean(np.linalg.norm(all_fb_lin_error, axis=0))
     fb_lin_arr.append(fb_lin_mean_error)
@@ -293,11 +349,12 @@ for ev in range(NUM_EVALS):
     action_norm = np.linalg.norm(actions, axis=0)
     print(f"FF norm = ",action_norm)
 
-plot_values(plot_name = f"rand_pos_error",dof = 4, pos_error = all_tracking_error)
-plot_values(plot_name = f"rand_fb_lin_error",dof = 4, fb_lin_error = all_fb_lin_error)
-plot_values(plot_name = f"rand_pid", dof = 4, pid_commands = logs['pid_command'][1:])
-plot_values(plot_name = f"rand_reward",dof = 1, rewards = logs['rewards'].reshape(-1,1))
-plot_values(plot_name = "rand_action", dof = 4, actions = actions)
+if PLOTS:
+    plot_values(plot_name = f"rand_pos_error",dof = 4, pos_error = all_tracking_error)
+    plot_values(plot_name = f"rand_fb_lin_error",dof = 4, fb_lin_error = all_fb_lin_error)
+    plot_values(plot_name = f"rand_pid", dof = 4, pid_commands = logs['pid_command'][1:])
+    plot_values(plot_name = f"rand_reward",dof = 1, rewards = logs['rewards'].reshape(-1,1))
+    plot_values(plot_name = "rand_action", dof = 4, actions = actions)
 
 pos_tracking_err = np.mean(pos_error)
 fb_lin_err = np.mean(fb_lin_arr)
@@ -315,7 +372,7 @@ best_pos_error = np.inf
 
 best_acc_error = np.inf
 total_timesteps = num_ep_training*EPISODE_LENGTH
-plot_epoch = 2
+
 
 # t0 = time.time()
 t0 = datetime.now()
@@ -334,7 +391,7 @@ if TRAIN_MODEL:
         # avg_eval_rew, std_eval_rew = evaluate_policy(model, env, n_eval_episodes = NUM_EVALS, deterministic= True)
         
         # # EVAL and corresponding saves
-        avg_eval_rew, std_eval_rew, all_rewards, logs_list = eval_model(env, model, render=False, gamma=GAMMA, num_episodes = NUM_EVALS)
+        avg_eval_rew, std_eval_rew, all_rewards, logs_list,_ = eval_model(env, model, render=False, gamma=GAMMA, num_episodes = NUM_EVALS)
         t2 = datetime.now()-t1
         
         pos_error =[]
@@ -365,7 +422,7 @@ if TRAIN_MODEL:
             action_norm = np.linalg.norm(actions, axis=0)
             print(f"FF norm = ",action_norm)
         
-        if i%plot_epoch==0:
+        if PLOTS and i%plot_epoch==0:
             plot_values(plot_name = f"iter_{i}_pos_error",dof = 4, error = all_tracking_error)
             plot_values(plot_name = f"iter_{i}_fb_lin_error",dof = 4, error = all_fb_lin_error)
             plot_values(plot_name = f"iter_{i}_pid", dof = 4, pid_commands = logs['pid_command'][1:])
