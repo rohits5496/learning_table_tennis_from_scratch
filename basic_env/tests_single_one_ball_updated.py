@@ -69,9 +69,15 @@ for episode in range(1):
 hysr.close()
 
 # Plots
-# plot_values(dof = 4, joint_pos = logs['joint_pos'][1:], des_joint_pos = logs['joint_pos_des'][:-1])
-# plot_values(dof = 4, pid_commands = logs['pid_command'][1:])
-plot_values(dof = 1, rewards = logs['rewards'].reshape(-1,1))
+plot_values(plot_name = 'test',dof = 4, joint_pos = logs['joint_pos'][1:], des_joint_pos = logs['joint_pos_des'][:-1])
+
+acc = np.diff(logs['joint_vel'], axis=0)/hysr._hysr_config.algo_time_step
+print("Algo timestep = ",hysr._hysr_config.algo_time_step)
+plot_values(plot_name = 'test_fb_err',dof = 4, 
+            pid_commands = logs['command'][1:],
+            acc = acc
+            )
+# plot_values(dof = 1, rewards = logs['rewards'].reshape(-1,1))
 
 
 

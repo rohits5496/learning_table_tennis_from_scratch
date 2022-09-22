@@ -3,7 +3,7 @@ from typing import Sequence, Tuple
 from dataclasses import dataclass
 import math
 import pam_interface
-
+import numpy as np
 
 @dataclass
 class PositionControllerStep:
@@ -110,6 +110,12 @@ class MyPositionController:
             [d_desired] * nb_steps
             for d_desired, nb_steps in zip(self._dq_desired, steps)
         ]
+        
+        # SIN wave
+        # A = (np.pi/steps)
+        q_trajectories = [[1*np.sin( (np.pi/step) *s)+current for s in range(step)] for step,current in zip(steps,self._q_current)]
+        dq_trajectories = [[(np.pi/step)*np.cos((np.pi/step)*s) for s in range(step)]  for step in steps]
+        # dq_trajectories = 
 
         def _align_sizes(arrays, fill_values):
             max_size = max([len(a) for a in arrays]) + extra_steps

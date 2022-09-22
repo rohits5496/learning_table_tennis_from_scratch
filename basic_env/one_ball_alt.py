@@ -760,13 +760,16 @@ class HysrOneBall_single_robot(gym.Env):
         # KP = [0.8, -3.0, 1.2, -1.0]
         # KI = [0.015, -0.25, 0.02, -0.05]
         # KD = [0.04, -0.09, 0.09, -0.09]
+        # NDP = [-0.3, -0.5, -0.34, -0.48]
         # TIME_STEP = 0.01
 
-        #tuned
+        #tuned - 0.05
         KP = [0.2,0.2,0.2,0.2]
+        KP = [kp * 5 for kp in KP]
         KD = [0.02,0.02,0.02,0.02]
         KI = [0.05,0.05,0.05,0.05]
         NDP = [0.5,0.5,0.6,0.5]
+        
         TIME_STEP = self._hysr_config.algo_time_step
         # _, _, Q_CURRENT, _ = self._pressure_commands.read()
 
