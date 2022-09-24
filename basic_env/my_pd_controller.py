@@ -63,6 +63,8 @@ class MyPositionController:
         self._q_current = q_current
         self._q_desired = q_desired
         self._total_timesteps = total_timesteps
+        # extra_steps = int(0.1*self._total_timesteps)
+        extra_steps = 0
 
         self._min_agos = pam_interface_config.min_pressures_ago
         self._max_agos = pam_interface_config.max_pressures_ago
@@ -222,7 +224,10 @@ class MyPositionController:
 
     def next_command(self, q, qd, step_mod= 0):
         self._step = self._step + step_mod
-        r = list(map(self._next_command, range(len(q)), q, qd, [self._step] * len(q)))
+        if self._step < self._max_step:
+            r = list(map(self._next_command, range(len(q)), q, qd, [self._step] * len(q)))
+        else: 
+            r = list(map(self._next_command, range(len(q)), q, qd, [self._step-1] * len(q)))
         self._step = self._step + 1
         return r
 
@@ -242,7 +247,11 @@ class MyPositionController:
         Gets next command without updating the _step
         """
         self._step = self._step + step_mod
-        r = list(map(self._next_command_peek, range(len(q)), q, qd, [self._step] * len(q)))
+        if self._step < self._max_step:
+            r = list(map(self._next_command_peek, range(len(q)), q, qd, [self._step] * len(q)))
+        else:
+            # at last timestep, returning the command with prev desired values
+            r = list(map(self._next_command_peek, range(len(q)), q, qd, [self._step-1] * len(q)))
         # self._step = self._step + 1
         return r        
 
@@ -255,6 +264,11 @@ class MyPositionController:
         """
         Gets the desired values 
         """
-        q_des = [self._q_trajectories[i][self._step] for i in range(len(self._q_trajectories))]
-        qd_des = [self._dq_trajectories[i][self._step] for i in range(len(self._dq_trajectories))]
+        if self._step < self._max_step:
+            q_des = [self._q_trajectories[i][self._step] for i in range(len(self._q_trajectories))]
+            qd_des = [self._dq_trajectories[i][self._step] for i in range(len(self._dq_trajectories))]
+        else:
+            # at last timestep, returning the command with prev desired values
+            q_des = [self._q_trajectories[i][self._step-1] for i in range(len(self._q_trajectories))]
+            qd_des = [self._dq_trajectories[i][self._step-1] for i in range(len(self._dq_trajectories))]
         return q_des, qd_des

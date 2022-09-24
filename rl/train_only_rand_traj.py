@@ -36,8 +36,8 @@ from basic_env.plotting import plot_values
 NUM_EVALS = 1
 TRAIN_MODEL = True
 LOAD_MODEL = False
-EPOCHS= 2 #100
-num_ep_training = 2 #40
+EPOCHS= 100 #100
+num_ep_training = 4 #40
 SEED = np.random.randint(10)
 log = True
 DEVICE = 'cpu'
@@ -306,13 +306,13 @@ if PLOTS:
 pos_tracking_err = np.mean(pos_error)
 fb_lin_err = np.mean(fb_lin_arr)
 
-print("Zero baseline "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew)
+print("Zero baseline "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew," . All_rewards = ",all_rewards)
 # print("Rand eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2)
 
 
-
+all_rewards
 # Random Agent, before training
-print("Random Agent")#eval with random policy
+print("Random Agent/ Loaded agent")#eval with random policy
 
 # print("Average reward with random policy = ",avg_eval_rew)   
 
@@ -360,7 +360,7 @@ pos_tracking_err = np.mean(pos_error)
 fb_lin_err = np.mean(fb_lin_arr)
 
 print("Rand "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew)
-print("Rand eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2)
+print("Rand eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2," . All_rewards = ",all_rewards)
 
 
 
@@ -432,14 +432,14 @@ if TRAIN_MODEL:
         pos_tracking_err = np.mean(pos_error)
         fb_lin_err = np.mean(fb_lin_arr)
         
-        print("Iteration : ",i," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew, " . Took time = ",t2)
+        print("Iteration : ",i," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew," . All_rewards = ",all_rewards, " . Took time = ",t2)
         # print(f"Iteration {i} : Last training reward = {last_training_rew} : Eval rew = {avg_eval_rew}")
         if log:
             wandb.log({"epoch":i, 
                     # "eval_reward_mean":ep_reward,
                     # "eval_reward_std":ep_rew_var,
                     "pos_tracking_error": pos_tracking_err,
-                    # "acc_tracking_error": np.mean(acc_error),
+                    # "acc_tracking_error": np.mean(acc_error), 
                     "norm_action":action_norm,
                     "fb_lin_error":fb_lin_err,
                     'err_joint0':joint_tracking_error[0],

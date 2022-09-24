@@ -27,7 +27,9 @@ hysr_config = HysrOneBallConfig.from_json(hysr_config_path)
 reward_function = JsonReward.get(reward_config_path)
 algo_time_step = hysr_config.algo_time_step
 
-hysr = HysrOneBall_single_robot(hysr_config, reward_function, logs = True)
+hysr = HysrOneBall_single_robot(hysr_config, reward_function, logs = True, 
+                                # reward_type = 'pos'
+                                )
 
 # trajectory_index = 49
 # hysr.set_ball_behavior(index=trajectory_index)

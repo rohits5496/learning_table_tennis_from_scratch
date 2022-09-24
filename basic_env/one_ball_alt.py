@@ -566,7 +566,7 @@ class HysrOneBall_single_robot(gym.Env):
 
         # configuration for accelerated time
         if self._accelerated_time:
-            NB_ROBOT_BURSTS = int((TIME_STEP / hysr_config.o80_pam_time_step) + 0.5)
+            NB_ROBOT_BURSTS = int((TIME_STEP / self._hysr_config.o80_pam_time_step) + 0.5)
 
         # configuration for real time
         if not self._accelerated_time:
@@ -778,7 +778,7 @@ class HysrOneBall_single_robot(gym.Env):
 
         # configuration for accelerated time
         if self._accelerated_time:
-            NB_ROBOT_BURSTS = int((TIME_STEP / hysr_config.o80_pam_time_step) + 0.5)
+            NB_ROBOT_BURSTS = int((TIME_STEP / self._hysr_config.o80_pam_time_step) + 0.5)
 
         # configuration for real time
         if not self._accelerated_time:
@@ -874,10 +874,12 @@ class HysrOneBall_single_robot(gym.Env):
             # pid_command = self.controller.next_command(q, qd, step_mod = 0 ) #-1 because step was updated in next command before (TEST ONLY)
             # or use computed value and update step
             pid_command = self.observation.pd_command
-            self.controller._step += 1 
+            # self.controller._step += 1 
             # pd_pressures2 = self.controller.convert_command_to_pressures(command)
         else:
-            print("Controller reached position, do something HERE") #what happens when there is nothing left
+            #what happens when there is nothing left
+            # print("Controller out of commands, copying last command") #this doesnt happen, the last command is computed with repeated last des value
+            pid_command = self.observation.pd_command 
 
         #2. Add pressures/torques
         command = [c+pi for c,pi in zip(pid_command, command_policy)]
@@ -943,10 +945,12 @@ class HysrOneBall_single_robot(gym.Env):
 
         q = joint_positions
         qd = joint_velocities
-        next_pid_command = self.controller.peek_next_command(q, qd, step_mod = 0) #operates at t+1 since last next_command updated it 
-
+        
         q_des, qd_des = self.controller.peek_next_desired_values()
-
+        
+        # next_pid_command = self.controller.peek_next_command(q, qd, step_mod = 0) #operates at t+1 since last next_command updated it 
+        next_pid_command = self.controller.next_command(q, qd, step_mod = 0)
+        
         # observation instance
         observation = _Observation(
             joint_positions,
