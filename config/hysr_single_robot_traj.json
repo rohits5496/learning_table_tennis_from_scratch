@@ -18,7 +18,7 @@
     },
     "pressure_change_range":18000,
     "trajectory":-1,
-    "accelerated_time":false,
+    "accelerated_time":true,
     "instant_reset":true,
     "nb_steps_per_episode":100, 
     "extra_balls_sets":-1,

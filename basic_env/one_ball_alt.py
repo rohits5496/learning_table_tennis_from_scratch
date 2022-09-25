@@ -963,9 +963,7 @@ class HysrOneBall_single_robot(gym.Env):
         )
 
         self.observation = observation
-        # checking if episode is over
-        episode_over = self._episode_over()
-
+        
         # next step can not be the first one
         # (reset will set this back to True)
         self._first_episode_step = False
@@ -977,6 +975,10 @@ class HysrOneBall_single_robot(gym.Env):
 
         # this step is done
         self._step_number += 1
+        
+        # checking if episode is over
+        episode_over = self._episode_over()
+
 
         #logging
         logs = {

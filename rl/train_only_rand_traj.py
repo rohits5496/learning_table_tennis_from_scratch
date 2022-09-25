@@ -32,11 +32,12 @@ import logging
 from basic_env.one_ball_alt import HysrOneBall_single_robot
 from learning_table_tennis_from_scratch.rewards import JsonReward
 from basic_env.plotting import plot_values
+from wandb.integration.sb3 import WandbCallback
 
 NUM_EVALS = 1
-TRAIN_MODEL = True
+TRAIN_MODEL = False
 LOAD_MODEL = False
-EPOCHS= 100 #100
+EPOCHS= 50 #100
 num_ep_training = 4 #40
 SEED = np.random.randint(10)
 log = True
@@ -44,8 +45,8 @@ DEVICE = 'cpu'
 
 TARGET_KL = 10.0
 LOG_STD = -1
-PLOTS = False
-plot_epoch = 20
+PLOTS = True
+plot_epoch = 10
 
 
 # log_dir = "local_logs" #local
@@ -190,7 +191,7 @@ log_dir_wandb = os.path.join(log_dir, "wandb")
 
 # project_name = "multi_traj_mbfb_dt_gains_updated"#org
 project_name = "pam_single_traj"
-exp_name = "ppo_dt_"+str(DT)
+exp_name = "ppo_dt_acctime"+str(DT)
 
 config = dict(
             # n_envs = N_ENVS,
@@ -386,7 +387,7 @@ if TRAIN_MODEL:
 
     for i in range(EPOCHS):
         t1=datetime.now()
-        model.learn(total_timesteps=total_timesteps, reset_num_timesteps=False)
+        model.learn(total_timesteps=total_timesteps, reset_num_timesteps=False,callback=WandbCallback())
         last_training_rew = env.get_attr('episode_returns')[0][-1]
         # avg_eval_rew, std_eval_rew = evaluate_policy(model, env, n_eval_episodes = NUM_EVALS, deterministic= True)
         
