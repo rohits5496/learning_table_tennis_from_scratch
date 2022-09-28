@@ -20,7 +20,7 @@
     "trajectory":-1,
     "accelerated_time":true,
     "instant_reset":true,
-    "nb_steps_per_episode":100, 
+    "nb_steps_per_episode":500, 
     "extra_balls_sets":-1,
     "extra_balls_per_set":-1,
     "trajectory_group":"originals",

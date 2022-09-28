@@ -16,9 +16,9 @@ from stable_baselines3.common.vec_env import DummyVecEnv,VecNormalize
 # from utils.helper import *
 from matplotlib import pyplot as plt
 
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
 from basic_env.wrappers import NormalizeActionWrapper
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 from stable_baselines3.common.monitor import Monitor
 from datetime import datetime
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -28,16 +28,20 @@ from learning_table_tennis_from_scratch.hysr_one_ball import (
     HysrOneBallConfig,
 )
 
+import warnings
+warnings.filterwarnings('ignore')
+
 import logging
 from basic_env.one_ball_alt import HysrOneBall_single_robot
 from learning_table_tennis_from_scratch.rewards import JsonReward
-from basic_env.plotting import plot_values
+from basic_env.plotting import plot_values, return_plot
 from wandb.integration.sb3 import WandbCallback
+import plotly
 
 NUM_EVALS = 1
-TRAIN_MODEL = False
+TRAIN_MODEL = True
 LOAD_MODEL = False
-EPOCHS= 50 #100
+EPOCHS= 500 #100
 num_ep_training = 4 #40
 SEED = np.random.randint(10)
 log = True
@@ -46,7 +50,7 @@ DEVICE = 'cpu'
 TARGET_KL = 10.0
 LOG_STD = -1
 PLOTS = True
-plot_epoch = 10
+plot_epoch = 20
 
 
 # log_dir = "local_logs" #local
@@ -191,7 +195,7 @@ log_dir_wandb = os.path.join(log_dir, "wandb")
 
 # project_name = "multi_traj_mbfb_dt_gains_updated"#org
 project_name = "pam_single_traj"
-exp_name = "ppo_dt_acctime"+str(DT)
+exp_name = "ppo_dt_acctime_dt"+str(DT)+"_EP"+str(EPISODE_LENGTH)+"act_0.05"
 
 config = dict(
             # n_envs = N_ENVS,
@@ -214,7 +218,9 @@ print(
 "\nusing configuration files:\n- {}\n- {}\n".format(reward_config_path, hysr_config_path)
 )
 
-env = HysrOneBall_single_robot(hysr_config, reward_function, logs = True, reward_type='fb_lin')
+env = HysrOneBall_single_robot(hysr_config, reward_function, logs = True, 
+                            #    reward_type='pos'
+                               )
 print("Action Space org = ", env.action_space)
 
 env = Monitor(env)
@@ -222,6 +228,8 @@ env = NormalizeActionWrapper(env)
 env = DummyVecEnv([lambda:env])
 
 env = VecNormalize(env, norm_obs=True, norm_reward=True, gamma=GAMMA)
+env = VecFrameStack(env, n_stack = 4)
+
 print("Observation Space = ",env.observation_space)
 print("Action Space = ", env.action_space)
 
@@ -235,7 +243,7 @@ policy_kwargs = dict(
     )
 
 
-model = PPO('MlpPolicy', env, verbose=0, gamma=GAMMA, 
+model = PPO('MlpPolicy', env, verbose=1, gamma=GAMMA, 
             tensorboard_log=log_dir_tensorboard, seed = SEED, device=DEVICE,
             target_kl=TARGET_KL,
             policy_kwargs=policy_kwargs
@@ -257,6 +265,9 @@ if LOAD_MODEL:
     # Load the agent
     model = PPO.load(save_dir + "ppo_pam_single_traj", env=env, device=DEVICE)
 
+
+if log:
+    run = wandb.init(project=project_name, name=exp_name, dir = log_dir_wandb, config=config, sync_tensorboard=True)
 
 # %% 
 # Random Agent, before training
@@ -293,16 +304,33 @@ for ev in range(NUM_EVALS):
     print(f"FB Linearization error joint-wise : ", fb_lin_error_mean)
     print(f"FB RMSE1 (mean of jointwise FB error) = {fb_lin_error_mean.mean():.6f}")
 
+    zero_RMSE1 = joint_tracking_error.mean()
+    zero_reward = avg_eval_rew
+    zero_fb_lin_err = fb_lin_mean_error
     actions = logs['actions']
     action_norm = np.linalg.norm(actions, axis=0)
     print(f"FF norm = ",action_norm)
 
-if PLOTS:
-    plot_values(plot_name = f"rand_pos_error",dof = 4, pos_error = all_tracking_error)
-    plot_values(plot_name = f"rand_fb_lin_error",dof = 4, fb_lin_error = all_fb_lin_error)
-    plot_values(plot_name = f"rand_pid", dof = 4, pid_commands = logs['pid_command'][1:])
-    plot_values(plot_name = f"rand_reward",dof = 1, rewards = logs['rewards'].reshape(-1,1))
-    plot_values(plot_name = "rand_action", dof = 4, actions = actions)
+if PLOTS and log:
+    fig = return_plot(dof = 4,  pos_error = all_tracking_error)
+    wandb.log({'zero_pos_error':fig})
+    del fig
+    
+    fig = return_plot(dof = 4,  fb_lin_error = all_fb_lin_error)
+    wandb.log({'zero_fb_lin_error':fig})
+    del fig
+    
+    fig = return_plot( dof = 4, pid_commands = logs['pid_command'][1:])
+    wandb.log({'zero_pid':fig})
+    del fig
+    
+    fig = return_plot(dof = 1, rewards = logs['rewards'].reshape(-1,1))
+    wandb.log({'zero_reward':fig})
+    del fig
+    
+    fig = return_plot(dof = 4, actions = actions)
+    wandb.log({'zero_actions':fig})
+    del fig
 
 pos_tracking_err = np.mean(pos_error)
 fb_lin_err = np.mean(fb_lin_arr)
@@ -311,8 +339,7 @@ print("Zero baseline "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ",
 # print("Rand eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2)
 
 
-all_rewards
-# Random Agent, before training
+# Random Agent, before training-------------------------------------------------------------------------------------------
 print("Random Agent/ Loaded agent")#eval with random policy
 
 # print("Average reward with random policy = ",avg_eval_rew)   
@@ -346,16 +373,37 @@ for ev in range(NUM_EVALS):
     print(f"FB Linearization error joint-wise : ", fb_lin_error_mean)
     print(f"FB RMSE1 (mean of jointwise FB error) = {fb_lin_error_mean.mean():.6f}")
 
+    random_RMSE1 = joint_tracking_error.mean()
     actions = logs['actions']
     action_norm = np.linalg.norm(actions, axis=0)
     print(f"FF norm = ",action_norm)
 
-if PLOTS:
-    plot_values(plot_name = f"rand_pos_error",dof = 4, pos_error = all_tracking_error)
-    plot_values(plot_name = f"rand_fb_lin_error",dof = 4, fb_lin_error = all_fb_lin_error)
-    plot_values(plot_name = f"rand_pid", dof = 4, pid_commands = logs['pid_command'][1:])
-    plot_values(plot_name = f"rand_reward",dof = 1, rewards = logs['rewards'].reshape(-1,1))
-    plot_values(plot_name = "rand_action", dof = 4, actions = actions)
+if PLOTS and log:
+    # plot_values(plot_name = f"rand_pos_error",dof = 4, pos_error = all_tracking_error)
+    # plot_values(plot_name = f"rand_fb_lin_error",dof = 4, fb_lin_error = all_fb_lin_error)
+    # plot_values(plot_name = f"rand_pid", dof = 4, pid_commands = logs['pid_command'][1:])
+    # plot_values(plot_name = f"rand_reward",dof = 1, rewards = logs['rewards'].reshape(-1,1))
+    # plot_values(plot_name = "rand_action", dof = 4, actions = actions)
+
+    fig = return_plot(dof = 4,  pos_error = all_tracking_error)
+    wandb.log({'rand_pos_error':fig})
+    del fig
+    
+    fig = return_plot(dof = 4,  fb_lin_error = all_fb_lin_error)
+    wandb.log({'rand_fb_lin_error':fig})
+    del fig
+    
+    fig = return_plot( dof = 4, pid_commands = logs['pid_command'][1:])
+    wandb.log({'rand_pid':fig})
+    del fig
+    
+    fig = return_plot(dof = 1, rewards = logs['rewards'].reshape(-1,1))
+    wandb.log({'rand_reward':fig})
+    del fig
+    
+    fig = return_plot(dof = 4, actions = actions)
+    wandb.log({'rand_actions':fig})
+    del fig
 
 pos_tracking_err = np.mean(pos_error)
 fb_lin_err = np.mean(fb_lin_arr)
@@ -363,12 +411,15 @@ fb_lin_err = np.mean(fb_lin_arr)
 print("Rand "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew)
 print("Rand eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2," . All_rewards = ",all_rewards)
 
-
-
+if log:
+    wandb.summary["zero_RMSE1"] = zero_RMSE1
+    wandb.summary["random_RMSE1"] = random_RMSE1
+    wandb.summary["zero_reward"] = zero_reward
+    wandb.summary["zero_fb_lin_err"] = zero_fb_lin_err
+    
 # %% Training
 max_val_reward = -np.inf
 best_pos_error = np.inf
-
 
 
 best_acc_error = np.inf
@@ -381,13 +432,17 @@ print("\n\nStarting Training....")
 
 if TRAIN_MODEL:
     
-    if log:
-        run = wandb.init(project=project_name, name=exp_name, dir = log_dir_wandb, config=config, sync_tensorboard=True)
+    # if log:
+    #     run = wandb.init(project=project_name, name=exp_name, dir = log_dir_wandb, config=config, sync_tensorboard=True)
+    #     wandb.summary["zero_RMSE1"] = zero_RMSE1
+    #     wandb.summary["random_RMSE1"] = random_RMSE1
+    #     wandb.summary["zero_reward"] = zero_reward
+    #     wandb.summary["zero_fb_lin_err"] = zero_fb_lin_err
 
 
     for i in range(EPOCHS):
         t1=datetime.now()
-        model.learn(total_timesteps=total_timesteps, reset_num_timesteps=False,callback=WandbCallback())
+        model.learn(total_timesteps=total_timesteps, reset_num_timesteps=False, log_interval = 1,tb_log_name = "PPO")
         last_training_rew = env.get_attr('episode_returns')[0][-1]
         # avg_eval_rew, std_eval_rew = evaluate_policy(model, env, n_eval_episodes = NUM_EVALS, deterministic= True)
         
@@ -424,11 +479,31 @@ if TRAIN_MODEL:
             print(f"FF norm = ",action_norm)
         
         if PLOTS and i%plot_epoch==0:
-            plot_values(plot_name = f"iter_{i}_pos_error",dof = 4, error = all_tracking_error)
-            plot_values(plot_name = f"iter_{i}_fb_lin_error",dof = 4, error = all_fb_lin_error)
-            plot_values(plot_name = f"iter_{i}_pid", dof = 4, pid_commands = logs['pid_command'][1:])
-            plot_values(plot_name = f"iter_{i}_reward",dof = 1, rewards = logs['rewards'].reshape(-1,1))
-            plot_values(plot_name = f"iter_{i}_actoin", dof = 4, action = actions)
+            # plot_values(plot_name = f"iter_{i}_pos_error",dof = 4, error = all_tracking_error)
+            # plot_values(plot_name = f"iter_{i}_fb_lin_error",dof = 4, error = all_fb_lin_error)
+            # plot_values(plot_name = f"iter_{i}_pid", dof = 4, pid_commands = logs['pid_command'][1:])
+            # plot_values(plot_name = f"iter_{i}_reward",dof = 1, rewards = logs['rewards'].reshape(-1,1))
+            # plot_values(plot_name = f"iter_{i}_actoin", dof = 4, action = actions)
+
+            fig = return_plot(dof = 4,  pos_error = all_tracking_error)
+            wandb.log({'pos_error':fig})
+            del fig
+            
+            fig = return_plot(dof = 4,  fb_lin_error = all_fb_lin_error)
+            wandb.log({'fb_lin_error':fig})
+            del fig
+            
+            fig = return_plot( dof = 4, pid_commands = logs['pid_command'][1:])
+            wandb.log({'pid':fig})
+            del fig
+            
+            fig = return_plot(dof = 1, rewards = logs['rewards'].reshape(-1,1))
+            wandb.log({'reward':fig})
+            del fig
+            
+            fig = return_plot(dof = 4, actions = actions)
+            wandb.log({'actions':fig})
+            del fig
 
         pos_tracking_err = np.mean(pos_error)
         fb_lin_err = np.mean(fb_lin_arr)
@@ -441,7 +516,7 @@ if TRAIN_MODEL:
                     # "eval_reward_std":ep_rew_var,
                     "pos_tracking_error": pos_tracking_err,
                     # "acc_tracking_error": np.mean(acc_error), 
-                    "norm_action":action_norm,
+                    "norm_action":np.mean(action_norm),
                     "fb_lin_error":fb_lin_err,
                     'err_joint0':joint_tracking_error[0],
                     'err_joint1':joint_tracking_error[1],

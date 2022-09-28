@@ -147,10 +147,16 @@ def _convert_pressures_out(pressures_ago, pressures_antago):
     pressures = list(zip(pressures_ago, pressures_antago))
     return [p for sublist in pressures for p in sublist]
 
+def _get_pressure_rates(pressures, last_pressures, timestep):
+    if last_pressures == None:
+        return [0 for i in range(len(pressures))]
+    else:
+        rates = [(c-l)/timestep for c,l in zip(pressures, last_pressures)]
+        return rates
 
 class _Observation:
     """
-    Needs : jont_pos, joint_vel, pressures_both, pressure_diff, pos_diff, vel_diff, pd_command
+    Needs : jont_pos, joint_vel, pressures_both, pressure_diff, pos_diff, vel_diff, pd_command, pressure_rate
     """
     def __init__(
         self,
@@ -160,7 +166,8 @@ class _Observation:
         pressure_diff,
         joint_pos_diff,
         joint_vel_diff,
-        pd_command
+        pd_command, 
+        pressure_rates
 
     ):
         self.joint_positions = joint_positions
@@ -170,6 +177,7 @@ class _Observation:
         self.joint_pos_diff = joint_pos_diff
         self.joint_vel_diff = joint_vel_diff
         self.pd_command = pd_command
+        self.pressure_rates = pressure_rates
 
     def flatten(self):
         obs = (self.joint_positions +
@@ -178,7 +186,8 @@ class _Observation:
             self.pressure_diff+
             self.joint_pos_diff+
             self.joint_vel_diff+
-            self.pd_command
+            self.pd_command +
+            self.pressure_rates
         )
         obs = np.array(obs, dtype='float32')
         return obs
@@ -421,11 +430,13 @@ class HysrOneBall_single_robot(gym.Env):
         self.controller = None
         self.frequency_manager = None
         self.command = None
+        self.last_pressure = None
+        self.pressure = None
 
-        low = -np.inf * np.ones(shape = (32,))
-        high = np.inf * np.ones(shape = (32,))
+        low = -np.inf * np.ones(shape = (40,))
+        high = np.inf * np.ones(shape = (40,))
         self.observation_space = SamplingSpace(low=low, high=high, dtype='float32')
-        self.action_space = spaces.Box(low = -0.1, high=0.1, shape = (4,), dtype = 'float32')
+        self.action_space = spaces.Box(low = -0.05, high=0.05, shape = (4,), dtype = 'float32')
 
     def get_starting_pressures(self):
         return self._hysr_config.starting_pressures
@@ -722,6 +733,9 @@ class HysrOneBall_single_robot(gym.Env):
             joint_positions,
             joint_velocities,
         ) = self._pressure_commands.read()
+        
+        self.pressure = pressures_ago + pressures_antago
+        self.last_pressure = None
 
         next_pid_command = self.controller.peek_next_command(joint_positions, joint_velocities, step_mod = 0) #operates at t+1 since last next_command updated it 
         q_des, qd_des = self.controller.peek_next_desired_values()
@@ -734,6 +748,7 @@ class HysrOneBall_single_robot(gym.Env):
             [des - q for des,q in zip(q_des, joint_positions)],
             [des - qd for des,qd in zip(qd_des, joint_velocities)],
             next_pid_command,
+            _get_pressure_rates(self.pressure, self.last_pressure, self._hysr_config.algo_time_step)
         )
 
         self.observation = observation
@@ -932,6 +947,7 @@ class HysrOneBall_single_robot(gym.Env):
         # if self._ball_status.min_position_ball_target is not None:
         #     self._hit_point.set(self._ball_status.min_position_ball_target, [0, 0, 0]
 
+        self.last_pressure = self.pressure
         # Get the new observation
         (
             pressures_ago,
@@ -940,6 +956,7 @@ class HysrOneBall_single_robot(gym.Env):
             joint_velocities,
         ) = self._pressure_commands.read()
 
+        self.pressure = pressures_ago + pressures_antago
         #get reward
         reward = self.get_reward(joint_positions, joint_velocities,command)
 
@@ -960,6 +977,7 @@ class HysrOneBall_single_robot(gym.Env):
             [des - q for des,q in zip(q_des,joint_positions)],
             [des - qd for des,qd in zip(qd_des, joint_velocities)],
             next_pid_command,
+            _get_pressure_rates(self.pressure, self.last_pressure, self._hysr_config.algo_time_step)
         )
 
         self.observation = observation

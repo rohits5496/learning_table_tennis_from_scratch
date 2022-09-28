@@ -114,9 +114,11 @@ class MyPositionController:
         ]
         
         # SIN wave
-        # A = (np.pi/steps)
-        q_trajectories = [[1*np.sin( (np.pi/step) *s)+current for s in range(step)] for step,current in zip(steps,self._q_current)]
-        dq_trajectories = [[(np.pi/step)*np.cos((np.pi/step)*s) for s in range(step)]  for step in steps]
+        A = 1
+        B = 2
+        q_trajectories = [[A*np.sin((B*np.pi/step) *s)+current for s in range(step)] for step,current in zip(steps,self._q_current)]
+        dq_trajectories = [[A*(B*np.pi/step)*np.cos((B*np.pi/step)*s) for s in range(step)]  for step in steps]
+        ddq_trajectories = [[-A*((B*np.pi/step)**2)*np.sin((B*np.pi/step)*s) for s in range(step)] for step in steps]
         # dq_trajectories = 
 
         def _align_sizes(arrays, fill_values):
@@ -130,6 +132,8 @@ class MyPositionController:
 
         self._q_trajectories = _align_sizes(q_trajectories, q_desired)
         self._dq_trajectories = _align_sizes(dq_trajectories, [0] * len(q_desired))
+        self._ddq_trajectories = _align_sizes(ddq_trajectories, [0] * len(q_desired))
+        
         self._error_sum = [0] * len(q_current)
 
         self._step = 0
@@ -182,7 +186,7 @@ class MyPositionController:
         self._p_command = control_p
         self._i_command = control_i
         self._d_command = control_d
-        control = control_p + control_d + control_i
+        control = control_p + control_d + control_i + self._ddq_trajectories[dof][step]
         control = max(min(control, 1), -1)
         self._pid_command = control
         return control
@@ -200,7 +204,7 @@ class MyPositionController:
         self._p_command = control_p
         self._i_command = control_i
         self._d_command = control_d
-        control = control_p + control_d + control_i
+        control = control_p + control_d + control_i + self._ddq_trajectories[dof][step]
         control = max(min(control, 1), -1)
         self._pid_command = control
         return control
