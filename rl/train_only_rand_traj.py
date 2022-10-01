@@ -1,4 +1,5 @@
 #%%
+from asyncio import SafeChildWatcher
 import os,sys
 
 #only if using interpreter
@@ -50,7 +51,7 @@ DEVICE = 'cpu'
 TARGET_KL = 10.0
 LOG_STD = -1
 PLOTS = True
-plot_epoch = 20
+plot_epoch = 50
 
 
 # log_dir = "local_logs" #local
@@ -194,7 +195,7 @@ EPISODE_LENGTH = hysr_config.nb_steps_per_episode
 log_dir_wandb = os.path.join(log_dir, "wandb")
 
 # project_name = "multi_traj_mbfb_dt_gains_updated"#org
-project_name = "pam_single_traj"
+project_name = "pam_single_traj_0.005"
 exp_name = "ppo_dt_acctime_dt"+str(DT)+"_EP"+str(EPISODE_LENGTH)+"act_0.05"
 
 config = dict(

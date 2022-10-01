@@ -778,7 +778,7 @@ class HysrOneBall_single_robot(gym.Env):
         # NDP = [-0.3, -0.5, -0.34, -0.48]
         # TIME_STEP = 0.01
 
-        #tuned - 0.05
+        # #tuned - 0.05
         KP = [0.2,0.2,0.2,0.2]
         KP = [kp * 5 for kp in KP]
         KD = [0.02,0.02,0.02,0.02]
