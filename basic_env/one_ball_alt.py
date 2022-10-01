@@ -1,3 +1,4 @@
+from logging import raiseExceptions
 import pathlib
 import json
 import os
@@ -194,7 +195,7 @@ class _Observation:
 
 
 class HysrOneBall_single_robot(gym.Env):
-    def __init__(self, hysr_config, reward_function, logs=False, reward_type = 'fb_lin'):
+    def __init__(self, hysr_config, reward_function, logs=False, reward_type = 'fb_lin', action_domain = 'joint'):
         super(HysrOneBall_single_robot, self).__init__()
         self._hysr_config = hysr_config
         self.logs = logs
@@ -207,6 +208,7 @@ class HysrOneBall_single_robot(gym.Env):
         # of each episode)
         self._step_number = -1
         self.reward_type = reward_type
+        self.action_domain = action_domain
 
         # we end an episode after a fixed number of steps
         self._nb_steps_per_episode = hysr_config.nb_steps_per_episode
@@ -436,7 +438,13 @@ class HysrOneBall_single_robot(gym.Env):
         low = -np.inf * np.ones(shape = (40,))
         high = np.inf * np.ones(shape = (40,))
         self.observation_space = SamplingSpace(low=low, high=high, dtype='float32')
-        self.action_space = spaces.Box(low = -0.05, high=0.05, shape = (4,), dtype = 'float32')
+
+        if self.action_domain=='joint':
+            self.action_space = spaces.Box(low = -0.1, high=0.1, shape = (4,), dtype = 'float32')
+        elif self.action_domain=='pressure':
+            self.action_space = spaces.Box(low = -2000, high= 2000, shape = (8,), dtype = 'int32')
+        else:
+            ValueError("Use either of following for action_domain : joint | pressure")
 
     def get_starting_pressures(self):
         return self._hysr_config.starting_pressures
@@ -897,11 +905,17 @@ class HysrOneBall_single_robot(gym.Env):
             pid_command = self.observation.pd_command 
 
         #2. Add pressures/torques
-        command = [c+pi for c,pi in zip(pid_command, command_policy)]
+        if self.action_domain == 'joint':
+            command = [c+pi for c,pi in zip(pid_command, command_policy)]
+        else:
+            command = pid_command
 
         #3. Convert torques to pressure using heuristic
         pressures = self.controller.convert_command_to_pressures(command)
 
+        if self.action_domain == 'pressure':
+            command_tuple = list(zip(*[iter(command_policy)]*2))
+            pressures = [(p1+cp1, p2+cp2) for (p1,p2),(cp1,cp2) in zip(pressures,command_tuple)]
         # sending action pressures to real (or pseudo real) robot.
         # Waiting needs to be HERE, since then we can get the updated observation.
         # Being outside causes the observation to become old
@@ -1008,7 +1022,8 @@ class HysrOneBall_single_robot(gym.Env):
             'full_command':command.copy(),
             'pressure_command': pressures.copy(),
             'reward':reward,
-            'episode_over': episode_over
+            'episode_over': episode_over,
+            'command_pressure': pressures
         }
 
         if self.logs:
@@ -1055,6 +1070,7 @@ class HysrOneBall_single_robot(gym.Env):
         command = []
         joint_pos_des = []
         joint_vel_des = []
+        command_pressures = []
         for items in self.logger:
             joint_pos.append(items['obs_next'][:4].copy())
             joint_vel.append(items['obs_next'][4:8].copy())
@@ -1064,6 +1080,7 @@ class HysrOneBall_single_robot(gym.Env):
             command.append(items['full_command'].copy())
             joint_pos_des.append(items['obs_des'].copy())
             joint_vel_des.append(items['obs_vel_des'].copy())
+            command_pressures.append(items['command_pressure'].copy())
 
         all_data_np = {
         'joint_pos' : np.array(joint_pos),
@@ -1073,7 +1090,8 @@ class HysrOneBall_single_robot(gym.Env):
         'command' : np.array(command),
         'pid_command' : np.array(pid_command),
         'joint_pos_des' : np.array(joint_pos_des),
-        'joint_vel_des':np.array(joint_vel_des)
+        'joint_vel_des':np.array(joint_vel_des),
+        'command_pressures':command_pressures
         }
 
         self.reset_logger()

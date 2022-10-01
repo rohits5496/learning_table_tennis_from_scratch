@@ -29,7 +29,10 @@ algo_time_step = hysr_config.algo_time_step
 
 hysr = HysrOneBall_single_robot(hysr_config, reward_function, logs = True, 
                                 # reward_type = 'pos'
+                                action_domain='pressure'
                                 )
+
+RANDOM = False  #use random actions
 
 # trajectory_index = 49
 # hysr.set_ball_behavior(index=trajectory_index)
@@ -42,17 +45,38 @@ hysr.reset()
 # # wait_pressures = [p for sublist in hysr_config.reference_posture for p in sublist]
 # wait_pressures = [0,0,0,0,0,0,0,0]
 
-action = [0,0,0,0]
+if RANDOM==False:
+    if hysr.action_domain == 'joint':
+        action = [0,0,0,0]
+    elif hysr.action_domain=='pressure':
+        action = [0,0,0,0,0,0,0,0]
+else:
+    action = hysr.action_space.sample()
+
+print("Sample action = ",action)
+
+
 data_iter = {}
 for episode in range(1):
     print("EPISODE", episode)
     running = True                                                                                                                                                                                                                                                                                                                                                                                                                               
     nb_steps = 0
     while running:
+
+        if RANDOM==False:
+            if hysr.action_domain == 'joint':
+                action = [0,0,0,0]
+            elif hysr.action_domain=='pressure':
+                action = [0,0,0,0,0,0,0,0]
+        else:
+            action = hysr.action_space.sample()
+
+
         if nb_steps < 60:
             observation, reward, reset, log = hysr.step(action)
         else:
             observation, reward, reset, log = hysr.step(action)
+        print(f"{nb_steps} : Act = {action}")
         print(f"{nb_steps} : Obs = {observation[:4]} | reward = {reward}")
 
         running = not reset
@@ -70,16 +94,20 @@ for episode in range(1):
 
 hysr.close()
 
-# Plots
-plot_values(plot_name = 'test',dof = 4, joint_pos = logs['joint_pos'][1:], des_joint_pos = logs['joint_pos_des'][:-1])
+press_diff = np.array([[(ago - antago) for (ago,antago) in items] for items in logs['command_pressures']])
+print("\n\n ****************************************** \n\n")
+print(f"Pressure diff Stats : Max = {np.max(press_diff)}, Min  = {np.min(press_diff)}, mean = {np.mean(press_diff)}")
 
+# Plots
+plot_values(plot_name = 'test_pos',dof = 4, joint_pos = logs['joint_pos'][1:], des_joint_pos = logs['joint_pos_des'][:-1])
+plot_values(plot_name = 'test_press', dof = 4, press_diff = press_diff)
 acc = np.diff(logs['joint_vel'], axis=0)/hysr._hysr_config.algo_time_step
 print("Algo timestep = ",hysr._hysr_config.algo_time_step)
-plot_values(plot_name = 'test_fb_err',dof = 4, 
-            pid_commands = logs['command'][1:],
-            acc = acc
+plot_values(plot_name = 'test_command',dof = 4, 
+            pid_commands = logs['command'],
             )
-# plot_values(dof = 1, rewards = logs['rewards'].reshape(-1,1))
+plot_values(plot_name = 'test_acc', dof = 4, acc=acc)
+plot_values(plot_name = 'test_rew', dof = 1, rewards = logs['rewards'].reshape(-1,1))
 
 
 
