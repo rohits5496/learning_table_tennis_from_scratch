@@ -47,5 +47,6 @@ class NormalizeActionWrapper(gym.Wrapper):
         """
         # Rescale action from [-1, 1] to original [low, high] interval
         rescaled_action = self.rescale_action(action)
+        rescaled_action = rescaled_action.astype(self.high.dtype)
         obs, reward, done, info = self.env.step(rescaled_action)
         return obs, reward, done, info

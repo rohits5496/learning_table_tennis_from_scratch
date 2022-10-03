@@ -42,17 +42,22 @@ import plotly
 NUM_EVALS = 1
 TRAIN_MODEL = True
 LOAD_MODEL = False
-EPOCHS= 500 #100
+EPOCHS= 100 #100
 num_ep_training = 4 #40
 SEED = np.random.randint(10)
 log = True
+log = False if TRAIN_MODEL==False else log
 DEVICE = 'cpu'
 
 TARGET_KL = 10.0
 LOG_STD = -1
 PLOTS = True
 plot_epoch = 50
+GAMMA = 0.99
 
+ALGO = 'PPO' #CAPS
+ACTION_DOMAIN = 'pressure'
+REWARD_TYPE = 'pos'
 
 # log_dir = "local_logs" #local
 log_dir = "/home/temp_store/rohit_sonker/" #remote
@@ -81,14 +86,12 @@ log_dir = "/home/temp_store/rohit_sonker/" #remote
 # reward_params = combination['reward_params']
 # NOISE = combination['noise']
 
-GAMMA = 0.0
-
 def eval_model(env, model, render = False, deterministic=True, gamma=0.0, num_episodes = 3, predict_zero = False):
     
     all_rewards = []
     logs_list2 = []
     # env.env_method("reset_eval_generator")
-    obs = env.reset()
+    obs = env.reset()           
     for i in range(num_episodes):
         # print("eval run ",i)
         rewards = []
@@ -101,10 +104,12 @@ def eval_model(env, model, render = False, deterministic=True, gamma=0.0, num_ep
             if predict_zero or np.isnan(obs).any():
                 if np.isnan(obs).any():
                     print("****------------- Nan obs detected, predicting zero ff action----------****")
-                action = np.array([0,0,0,0]).reshape(1,4)
+                action = np.array([0]*env.action_space.shape[0]).reshape(1,env.action_space.shape[0])
             else:
                 action, _ = model.predict(obs, deterministic=deterministic)
             
+            # if ACTION_DOMAIN == 'pressure':
+            #     action = action.astype(int)
             # print(action)
             obs, r, done, logs = env.step(action)
             r = env.get_original_reward()
@@ -134,6 +139,7 @@ def unpack_logs(log_list):
     command = []
     joint_pos_des = []
     joint_vel_des = []
+
     for x in log_list:
         items= x[0]
         joint_pos.append(items['obs_next'][:4].copy())
@@ -191,12 +197,22 @@ algo_time_step = hysr_config.algo_time_step
 DT = hysr_config.algo_time_step
 EPISODE_LENGTH = hysr_config.nb_steps_per_episode
 
+print(
+"\nusing configuration files:\n- {}\n- {}\n".format(reward_config_path, hysr_config_path)
+)
+
+env = HysrOneBall_single_robot(hysr_config, reward_function, logs = True, 
+                               reward_type=REWARD_TYPE,
+                               action_domain = ACTION_DOMAIN
+                               )
+
 #wandb
 log_dir_wandb = os.path.join(log_dir, "wandb")
 
 # project_name = "multi_traj_mbfb_dt_gains_updated"#org
-project_name = "pam_single_traj_0.005"
-exp_name = "ppo_dt_acctime_dt"+str(DT)+"_EP"+str(EPISODE_LENGTH)+"act_0.05"
+project_name = "pam_single_traj_dt_"+str(DT)
+act_high = np.max(env.action_space.high)
+exp_name = ALGO + "_acctime_"+"dom_"+ACTION_DOMAIN + "_rew_" + REWARD_TYPE + '_act_'+str(act_high)+"G_"+str(GAMMA)
 
 config = dict(
             # n_envs = N_ENVS,
@@ -215,13 +231,6 @@ save_dir = "rl/models/" + project_name + '/' + exp_name + '/'
 # save_dir = "rl_panda_experiments/models/tracking/PPO/last_model/"
 stats_path = os.path.join(save_dir, "vec_normalize.pkl")
 
-print(
-"\nusing configuration files:\n- {}\n- {}\n".format(reward_config_path, hysr_config_path)
-)
-
-env = HysrOneBall_single_robot(hysr_config, reward_function, logs = True, 
-                            #    reward_type='pos'
-                               )
 print("Action Space org = ", env.action_space)
 
 env = Monitor(env)
@@ -229,7 +238,8 @@ env = NormalizeActionWrapper(env)
 env = DummyVecEnv([lambda:env])
 
 env = VecNormalize(env, norm_obs=True, norm_reward=True, gamma=GAMMA)
-env = VecFrameStack(env, n_stack = 4)
+if ALGO == 'PPO':
+    env = VecFrameStack(env, n_stack = 4)
 
 print("Observation Space = ",env.observation_space)
 print("Action Space = ", env.action_space)
@@ -244,11 +254,17 @@ policy_kwargs = dict(
     )
 
 
-model = PPO('MlpPolicy', env, verbose=1, gamma=GAMMA, 
-            tensorboard_log=log_dir_tensorboard, seed = SEED, device=DEVICE,
-            target_kl=TARGET_KL,
-            policy_kwargs=policy_kwargs
-            )
+if ALGO =='PPO':
+    model = PPO('MlpPolicy', env, verbose=1, gamma=GAMMA, 
+                tensorboard_log=log_dir_tensorboard, seed = SEED, device=DEVICE,
+                target_kl=TARGET_KL,
+                policy_kwargs=policy_kwargs
+                )
+else:
+    model = SAC('MlpPolicy', env, verbose=1, gamma=GAMMA, 
+                tensorboard_log=log_dir_tensorboard, seed = SEED, device=DEVICE,
+                policy_kwargs=policy_kwargs
+                )
 
 
 # if TRAIN_MODEL and LOAD_MODEL != True:
@@ -269,6 +285,10 @@ if LOAD_MODEL:
 
 if log:
     run = wandb.init(project=project_name, name=exp_name, dir = log_dir_wandb, config=config, sync_tensorboard=True)
+    wandb.summary['GAMMA'] = GAMMA
+    wandb.summary['domain'] = ACTION_DOMAIN
+    wandb.summary['reward_type'] = REWARD_TYPE
+    wandb.summary['action_high'] = act_high
 
 # %% 
 # Random Agent, before training
@@ -541,12 +561,13 @@ if TRAIN_MODEL:
             env.save(stats_path)
             if log:
                 wandb.summary["best_train_reward"] = max_val_reward
-            
-        # if best_pos_error>pos_tracking_err:
-        #     best_pos_error = pos_tracking_err    
-        #     if log:
-        #         wandb.summary['best_pos_error'] = best_pos_error
-        #         wandb.summary['reward_on_best_pos_error'] = ep_reward
+        
+
+        if best_pos_error>pos_tracking_err:
+            best_pos_error = pos_tracking_err    
+            if log:
+                wandb.summary['best_pos_error'] = best_pos_error
+                wandb.summary['reward_on_best_pos_error'] = avg_eval_rew
         #         wandb.summary['b_pos_error_t1'] = pos_error[0]
         #         wandb.summary['b_pos_error_t2'] = pos_error[1]
         #         wandb.summary['b_pos_error_t3'] = pos_error[2]
@@ -600,7 +621,84 @@ if TRAIN_MODEL:
     if log:
         run.finish()
 
+env.close()
+del env
 total_time = datetime.now() - t0
 
 print("\n\n Training complete, total time taken = ",total_time)
+
+print("\n\n*********************************************************************\n\n")
+
+print("Running eval on best model")
+  
+save_dir_new = save_dir + "ppo_pam_single_traj"
+stats_path = os.path.join(save_dir, "vec_normalize.pkl")
+# restart env
+
+env2 = HysrOneBall_single_robot(hysr_config, reward_function, logs = True, 
+                               reward_type=REWARD_TYPE,
+                               action_domain = ACTION_DOMAIN
+                               )
+
+
+
+env = Monitor(env2)
+env = NormalizeActionWrapper(env)
+env = DummyVecEnv([lambda:env])
+
+env = VecNormalize.load(stats_path, env)
+
+env.training=False
+env.norm_reward = False
+
+
+if ALGO == 'PPO':
+    env = VecFrameStack(env, n_stack = 4)
     
+
+# Load the agent
+model = PPO.load(save_dir + "ppo_pam_single_traj", env=env, device=DEVICE)
+
+
+avg_eval_rew, std_eval_rew, all_rewards, logs_list, r = eval_model(env, model, render=False, gamma=GAMMA, num_episodes = NUM_EVALS)
+avg_eval_rew2, std_eval_rew2 = evaluate_policy(model, env, n_eval_episodes = NUM_EVALS, deterministic= True)
+
+pos_error =[]
+norm_ff_arr = []
+acc_error = []
+logs_array =[]
+fb_lin_arr = []
+
+for ev in range(NUM_EVALS):
+    logs = unpack_logs(logs_list[ev])
+    all_tracking_error = logs['joint_pos'][1:] - logs['joint_pos_des'][:-1]
+    joint_tracking_error = np.sqrt(np.mean((logs['joint_pos'][1:] - logs['joint_pos_des'][:-1])**2, axis=0))
+    tracking_mean_error = joint_tracking_error.mean()
+    pos_error.append(tracking_mean_error)
+    print("\n\n")
+    print(f"Pos tracking error joint-wise : ", joint_tracking_error)
+    print(f"RMSE1 (mean of jointwise error) = {joint_tracking_error.mean():.6f}")
+
+    acc = np.diff(logs['joint_vel'],axis=0)/DT #i = i+1 - i             
+    all_fb_lin_error = acc - logs['command'][1:]
+    # this is axis =0 hence joint-wise computation, to match reward set axis=1 (step wise) and later sum for whole episode
+    fb_lin_error_mean = np.sqrt(np.mean(all_fb_lin_error**2, axis=0))
+    fb_lin_mean_error = np.mean(np.linalg.norm(all_fb_lin_error, axis=0))
+    fb_lin_arr.append(fb_lin_mean_error)
+    print(f"FB Linearization error joint-wise : ", fb_lin_error_mean)
+    print(f"FB RMSE1 (mean of jointwise FB error) = {fb_lin_error_mean.mean():.6f}")
+
+    random_RMSE1 = joint_tracking_error.mean()
+    actions = logs['actions']
+    action_norm = np.linalg.norm(actions, axis=0)
+    print(f"FF norm = ",action_norm)
+    
+pos_tracking_err = np.mean(pos_error)
+fb_lin_err = np.mean(fb_lin_arr)
+
+print("Final "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew)
+print("Final eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2," . All_rewards = ",all_rewards)
+
+print("Improvement in reward = ",avg_eval_rew - zero_reward, "% percent = ",(avg_eval_rew - zero_reward)*100/zero_reward)
+print("Improvement in Tracking = ",pos_tracking_err - zero_RMSE1, "% percent = ",-1*(pos_tracking_err - zero_RMSE1)*100/zero_RMSE1)
+print("Improvement in reward = ",fb_lin_err - zero_fb_lin_err, "% percent = ",-1*(fb_lin_err - zero_fb_lin_err)*100/zero_fb_lin_err)
