@@ -195,7 +195,8 @@ class _Observation:
 
 
 class HysrOneBall_single_robot(gym.Env):
-    def __init__(self, hysr_config, reward_function, logs=False, reward_type = 'fb_lin', action_domain = 'joint'):
+    def __init__(self, hysr_config, reward_function, logs=False, reward_type = 'fb_lin', action_domain = 'joint',
+                 random_traj = False, test_traj = None, traj_seed = [0,1]):
         super(HysrOneBall_single_robot, self).__init__()
         self._hysr_config = hysr_config
         self.logs = logs
@@ -209,6 +210,11 @@ class HysrOneBall_single_robot(gym.Env):
         self._step_number = -1
         self.reward_type = reward_type
         self.action_domain = action_domain
+        self.random_traj = random_traj
+        self.test_traj = test_traj
+        self.traj_seed = traj_seed
+        self.A_rng = np.random.default_rng(seed = self.traj_seed[0])
+        self.B_rng = np.random.default_rng(seed = self.traj_seed[1])
 
         # we end an episode after a fixed number of steps
         self._nb_steps_per_episode = hysr_config.nb_steps_per_episode
@@ -817,11 +823,21 @@ class HysrOneBall_single_robot(gym.Env):
             KI,
             NDP,
             TIME_STEP,
+            random_traj=self.random_traj,
+            test_traj=self.test_traj,
+            A_rng = self.A_rng,
+            B_rng = self.B_rng
         )
 
         self.q_trajectory = self.controller._q_trajectories
         self.dq_trajectory = self.controller._dq_trajectories
 
+    def reset_controller_traj_seeds(self,traj_seed):
+        # self.controller.reset_traj_seeds(traj_seed)
+        self.A_rng = np.random.default_rng(seed = traj_seed[0])
+        self.B_rng = np.random.default_rng(seed = traj_seed[1])
+    
+    
     def _episode_over(self):
         
         # manual condition

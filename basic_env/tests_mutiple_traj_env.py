@@ -14,6 +14,11 @@ from learning_table_tennis_from_scratch.rewards import JsonReward
 from learning_table_tennis_from_scratch.jsonconfig import get_json_config
     
 import numpy as np
+# np.random.seed(1) #fix this seed for eval
+A_seed = 10
+B_seed = 11
+
+NUM_EVALS = 5
 
 logging.basicConfig(format="hysr_one_ball_swing | %(message)s", level=logging.INFO)
 # reward_config_path, hysr_config_path = _configure()
@@ -28,8 +33,10 @@ reward_function = JsonReward.get(reward_config_path)
 algo_time_step = hysr_config.algo_time_step
 
 hysr = HysrOneBall_single_robot(hysr_config, reward_function, logs = True, 
-                                # reward_type = 'pos'
-                                action_domain='pressure'
+                                reward_type = 'pos',
+                                action_domain='pressure',
+                                random_traj = True,
+                                traj_seed=[A_seed, B_seed]
                                 )
 
 RANDOM = False  #use random actions
@@ -56,8 +63,12 @@ else:
 print("Sample action = ",action)
 print(hysr.action_space.high)
 
+#Just to show
+# hysr.env_method("reset_controller_traj_seeds",traj_seed = [A_seed, B_seed])
+hysr.reset_controller_traj_seeds(traj_seed=[A_seed,B_seed])
+
 data_iter = {}
-for episode in range(1):
+for episode in range(NUM_EVALS):
     print("EPISODE", episode)
     running = True                                                                                                                                                                                                                                                                                                                                                                                                                               
     nb_steps = 0
@@ -76,8 +87,8 @@ for episode in range(1):
             observation, reward, reset, log = hysr.step(action)
         else:
             observation, reward, reset, log = hysr.step(action)
-        print(f"{nb_steps} : Act = {action}")
-        print(f"{nb_steps} : Obs = {observation[:4]} | reward = {reward}")
+        # print(f"{nb_steps} : Act = {action}")
+        # print(f"{nb_steps} : Obs = {observation[:4]} | reward = {reward}")
 
         running = not reset
         nb_steps += 1
@@ -98,16 +109,18 @@ press_diff = np.array([[(ago - antago) for (ago,antago) in items] for items in l
 print("\n\n ****************************************** \n\n")
 print(f"Pressure diff Stats : Max = {np.max(press_diff)}, Min  = {np.min(press_diff)}, mean = {np.mean(press_diff)}")
 print(np.max(hysr.action_space.high))
+print("Algo timestep = ",hysr._hysr_config.algo_time_step)
 # Plots
 plot_values(plot_name = 'test_pos',dof = 4, joint_pos = logs['joint_pos'][1:], des_joint_pos = logs['joint_pos_des'][:-1])
-plot_values(plot_name = 'test_press', dof = 4, press_diff = press_diff)
-acc = np.diff(logs['joint_vel'], axis=0)/hysr._hysr_config.algo_time_step
-print("Algo timestep = ",hysr._hysr_config.algo_time_step)
-plot_values(plot_name = 'test_command',dof = 4, 
-            pid_commands = logs['command'],
-            )
-plot_values(plot_name = 'test_acc', dof = 4, acc=acc)
-plot_values(plot_name = 'test_rew', dof = 1, rewards = logs['rewards'].reshape(-1,1))
+
+# plot_values(plot_name = 'test_press', dof = 4, press_diff = press_diff)
+# acc = np.diff(logs['joint_vel'], axis=0)/hysr._hysr_config.algo_time_steps
+# 
+# plot_values(plot_name = 'test_command',dof = 4, 
+#             pid_commands = logs['command'],
+#             )
+# plot_values(plot_name = 'test_acc', dof = 4, acc=acc)
+# plot_values(plot_name = 'test_rew', dof = 1, rewards = logs['rewards'].reshape(-1,1))
 
 
 

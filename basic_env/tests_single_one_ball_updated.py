@@ -28,8 +28,8 @@ reward_function = JsonReward.get(reward_config_path)
 algo_time_step = hysr_config.algo_time_step
 
 hysr = HysrOneBall_single_robot(hysr_config, reward_function, logs = True, 
-                                # reward_type = 'pos'
-                                action_domain='pressure'
+                                reward_type = 'pos',
+                                action_domain='pressure',
                                 )
 
 RANDOM = False  #use random actions

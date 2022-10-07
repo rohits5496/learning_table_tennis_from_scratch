@@ -58,13 +58,18 @@ class MyPositionController:
         ndp: Sequence[float],
         time_step: float,
         extra_steps: int = 100,
+        random_traj = False,
+        test_traj = None,
+        A_rng = None,
+        B_rng = None
     ):
 
         self._q_current = q_current
-        self._q_desired = q_desired
+        # self._q_desired = q_desired
         self._total_timesteps = total_timesteps
         # extra_steps = int(0.1*self._total_timesteps)
         extra_steps = 0
+        self.extra_steps = extra_steps
 
         self._min_agos = pam_interface_config.min_pressures_ago
         self._max_agos = pam_interface_config.max_pressures_ago
@@ -83,46 +88,109 @@ class MyPositionController:
         self._ndp = ndp
 
         self._time_step = time_step
+        
+        #traj
+        self.random_traj = random_traj
+        self.test_traj = test_traj
+        
+        self.A_rng = A_rng
+        self.B_rng = B_rng
+        self.traj_A_limits = [0.1, 0.7]
+        self.traj_B_limits = [0.5, 3]
+        
+        self.steps = [self._total_timesteps for i in range(len(self._q_current))]
 
-        q_error = [
-            current - desired
-            for desired, current in zip(self._q_current, self._q_desired)
-        ]
-
+        # with desired q target
+        # q_error = [
+        #     current - desired
+        #     for desired, current in zip(self._q_current, self._q_desired)
+        # ]
         # steps = [
         #     math.ceil(abs(error) / time_step / dq)
         #     for error, dq in zip(q_error, self._dq_desired)
         # ]
-        steps = [self._total_timesteps for i in range(len(q_error))]
-        self._dq_desired = [er/ts for er,ts in zip(q_error, steps)]
+        # steps = [self._total_timesteps for i in range(len(q_error))]
+        # self._dq_desired = [er/ts for er,ts in zip(q_error, steps)]
 
-        def _get_q_trajectory(nb_steps, current, desired):
-            error = desired - current
-            r = [(error / nb_steps) * step + current for step in range(nb_steps)]
-            return r
+        # def _get_q_trajectory(nb_steps, current, desired):
+        #     error = desired - current
+        #     r = [(error / nb_steps) * step + current for step in range(nb_steps)]
+        #     return r
             
-        q_trajectories = [
-            _get_q_trajectory(nb_steps, current, desired)
-            for nb_steps, current, desired in zip(
-                steps, self._q_current, self._q_desired
-            )
-        ]
-
-        dq_trajectories = [
-            [d_desired] * nb_steps
-            for d_desired, nb_steps in zip(self._dq_desired, steps)
-        ]
+        # q_trajectories = [
+        #     _get_q_trajectory(nb_steps, current, desired)
+        #     for nb_steps, current, desired in zip(
+        #         steps, self._q_current, self._q_desired
+        #     )
+        # ]
+        # dq_trajectories = [
+        #     [d_desired] * nb_steps
+        #     for d_desired, nb_steps in zip(self._dq_desired, steps)
+        # ]
         
         # SIN wave
-        A = 1
-        B = 2
-        q_trajectories = [[A*np.sin((B*np.pi/step) *s)+current for s in range(step)] for step,current in zip(steps,self._q_current)]
-        dq_trajectories = [[A*(B*np.pi/step)*np.cos((B*np.pi/step)*s) for s in range(step)]  for step in steps]
-        ddq_trajectories = [[-A*((B*np.pi/step)**2)*np.sin((B*np.pi/step)*s) for s in range(step)] for step in steps]
-        # dq_trajectories = 
+        # A = 1
+        # B = 2
+        # q_trajectories = [[A*np.sin((B*np.pi/step) *s)+current for s in range(step)] for step,current in zip(self.steps,self._q_current)]
+        # dq_trajectories = [[A*(B*np.pi/step)*np.cos((B*np.pi/step)*s) for s in range(step)]  for step in self.steps]
+        # ddq_trajectories = [[-A*((B*np.pi/step)**2)*np.sin((B*np.pi/step)*s) for s in range(step)] for step in self.steps]
+        
+
+        # def _align_sizes(arrays, fill_values):
+        #     max_size = max([len(a) for a in arrays]) + extra_steps
+
+        #     def _align_size(array, fill_value):
+        #         array.extend([fill_value] * (max_size - len(array)))
+        #         return array
+
+        #     return list(map(_align_size, arrays, fill_values))
+
+        # #check if this is even required
+        # self._q_trajectories = _align_sizes(q_trajectories, q_trajectories[-1])
+        # self._dq_trajectories = _align_sizes(dq_trajectories, [0] * len(q_trajectories[-1]))
+        # self._ddq_trajectories = _align_sizes(ddq_trajectories, [0] * len(q_trajectories[-1]))
+        
+        self.initialize_traj()
+        
+        self._error_sum = [0] * len(q_current)
+
+        self._step = 0
+        self._max_step = max(self.steps) + extra_steps
+
+        self._introspect = [None]*len(self.steps)
+        self._p_command = []
+        self._i_command = []
+        self._d_command = []
+        self._pid_command = []
+    
+    
+    def initialize_traj(self):
+        if self.random_traj:
+            A = self.traj_A_limits[0] + self.A_rng.uniform()*(self.traj_A_limits[1] - self.traj_A_limits[0])
+            B = self.traj_B_limits[0] + self.B_rng.uniform()*(self.traj_B_limits[1] - self.traj_B_limits[0])
+            
+        elif self.test_traj == 'in_distribution':
+            #think more on how to keep this uniform
+            A = self.traj_A_limits[0] + self.A_rng.uniform()*(self.traj_A_limits[1] - self.traj_A_limits[0])
+            B = self.traj_B_limits[0] + self.B_rng.uniform()*(self.traj_B_limits[1] - self.traj_B_limits[0])
+        elif self.test_traj == 'out_of_distribution':
+            a_limits = [0.7,1.1]
+            b_limits = [3,4]
+            A = a_limits[0] + self.A_rng.uniform()*(a_limits[1] - a_limits[0])
+            B = b_limits[0] + self.B_rng.uniform()*(b_limits[1] - b_limits[0])
+        else:
+            # basic mode -- single traj -- same test and eval traj
+            # SIN wave
+            A = 1
+            B = 2
+        
+        print("A = ", A , " | B = ",B)
+        q_trajectories = [[A*np.sin((B*np.pi/step) *s)+current for s in range(step)] for step,current in zip(self.steps,self._q_current)]
+        dq_trajectories = [[A*(B*np.pi/step)*np.cos((B*np.pi/step)*s) for s in range(step)]  for step in self.steps]
+        ddq_trajectories = [[-A*((B*np.pi/step)**2)*np.sin((B*np.pi/step)*s) for s in range(step)] for step in self.steps]
 
         def _align_sizes(arrays, fill_values):
-            max_size = max([len(a) for a in arrays]) + extra_steps
+            max_size = max([len(a) for a in arrays]) + self.extra_steps
 
             def _align_size(array, fill_value):
                 array.extend([fill_value] * (max_size - len(array)))
@@ -130,21 +198,18 @@ class MyPositionController:
 
             return list(map(_align_size, arrays, fill_values))
 
-        self._q_trajectories = _align_sizes(q_trajectories, q_desired)
-        self._dq_trajectories = _align_sizes(dq_trajectories, [0] * len(q_desired))
-        self._ddq_trajectories = _align_sizes(ddq_trajectories, [0] * len(q_desired))
+        #check if this is even required
+        self._q_trajectories = _align_sizes(q_trajectories, q_trajectories[-1])
+        self._dq_trajectories = _align_sizes(dq_trajectories, [0] * len(q_trajectories[-1]))
+        self._ddq_trajectories = _align_sizes(ddq_trajectories, [0] * len(q_trajectories[-1]))
         
-        self._error_sum = [0] * len(q_current)
-
-        self._step = 0
-        self._max_step = max(steps) + extra_steps
-
-        self._introspect = [None]*len(steps)
-        self._p_command = []
-        self._i_command = []
-        self._d_command = []
-        self._pid_command = []
-        
+    
+    # def reset_traj_seeds(self, traj_seed):
+    #     print("Resetting Traj generator state")
+    #     self.traj_seed = traj_seed
+    #     self.A_rng = np.random.default_rng(seed = self.traj_seed[0])
+    #     self.B_rng = np.random.default_rng(seed = self.traj_seed[1])
+    
     def introspection(self)->typing.Sequence[PositionControllerStep]:
         return copy.deepcopy(self._introspect)
         
