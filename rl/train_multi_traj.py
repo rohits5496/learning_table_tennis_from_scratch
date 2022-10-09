@@ -48,6 +48,9 @@ SEED = np.random.randint(10)
 
 #TRAINING Traj
 np.random.seed(0)
+# A_seed = 0
+# B_seed = 1
+
 
 log = True
 log = False if TRAIN_MODEL==False else log
@@ -57,11 +60,11 @@ TARGET_KL = 10.0
 LOG_STD = -1
 PLOTS = False
 plot_epoch = 50
-GAMMA = 0.99
+GAMMA = 0.5
 
 ALGO = 'PPO' #CAPS
 ACTION_DOMAIN = 'pressure'
-REWARD_TYPE = 'fb_lin'
+REWARD_TYPE = 'pos'
 
 # log_dir = "local_logs" #local
 log_dir = "/home/temp_store/rohit_sonker/" #remote
@@ -285,7 +288,7 @@ if LOAD_MODEL:
     env.norm_reward = False
 
     # Load the agent
-    model = PPO.load(save_dir + "ppo_pam_single_traj", env=env, device=DEVICE)
+    model = PPO.load(save_dir + "ppo_pam_multi_traj", env=env, device=DEVICE)
 
 
 if log:

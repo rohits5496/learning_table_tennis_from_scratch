@@ -39,7 +39,7 @@ from basic_env.plotting import plot_values, return_plot
 from wandb.integration.sb3 import WandbCallback
 import plotly
 
-NUM_EVALS = 2
+NUM_EVALS = 20
 TRAIN_MODEL = False
 LOAD_MODEL = False
 EPOCHS= 100 #100
@@ -51,6 +51,9 @@ SEED = np.random.randint(10)
 A_seed = 10
 B_seed = 11
 
+# TEST_TRAJ_TYPE = 'in_distribution'
+TEST_TRAJ_TYPE = 'out_of_distribution'
+
 log = True
 log = False if TRAIN_MODEL==False else log
 DEVICE = 'cpu'
@@ -59,7 +62,7 @@ TARGET_KL = 10.0
 LOG_STD = -1
 PLOTS = False
 plot_epoch = 50
-GAMMA = 0.99
+GAMMA = 0.5
 
 ALGO = 'PPO' #CAPS
 ACTION_DOMAIN = 'pressure'
@@ -211,7 +214,7 @@ env = HysrOneBall_single_robot(hysr_config, reward_function, logs = True,
                                reward_type=REWARD_TYPE,
                                action_domain = ACTION_DOMAIN,
                                random_traj = False,
-                               test_traj = 'in_distribution',
+                               test_traj = TEST_TRAJ_TYPE,
                                traj_seed = [A_seed ,B_seed],
                                )
 
@@ -306,10 +309,14 @@ acc_error = []
 logs_array =[]
 fb_lin_arr = []
 
+all_joint_tracking_error = []
+
+
 for ev in range(NUM_EVALS):
     logs = unpack_logs(logs_list[ev])
     all_tracking_error = logs['joint_pos'][1:] - logs['joint_pos_des'][:-1]
     joint_tracking_error = np.sqrt(np.mean((logs['joint_pos'][1:] - logs['joint_pos_des'][:-1])**2, axis=0))
+    all_joint_tracking_error.append(joint_tracking_error)
     tracking_mean_error = joint_tracking_error.mean()
     pos_error.append(tracking_mean_error)
     print("\n\n")
@@ -321,13 +328,14 @@ for ev in range(NUM_EVALS):
     # this is axis =0 hence joint-wise computation, to match reward set axis=1 (step wise) and later sum for whole episode
     fb_lin_error_mean = np.sqrt(np.mean(all_fb_lin_error**2, axis=0))
     fb_lin_mean_error = np.mean(np.linalg.norm(all_fb_lin_error, axis=0))
-    fb_lin_arr.append(fb_lin_mean_error)
+    fb_lin_arr.append(fb_lin_error_mean)
     print(f"FB Linearization error joint-wise : ", fb_lin_error_mean)
     print(f"FB RMSE1 (mean of jointwise FB error) = {fb_lin_error_mean.mean():.6f}")
 
     zero_RMSE1 = joint_tracking_error.mean()
     zero_reward = avg_eval_rew
-    zero_fb_lin_err = fb_lin_mean_error
+    zero_fb_lin_err_mean = np.mean(fb_lin_mean_error)
+    
     actions = logs['actions']
     action_norm = np.linalg.norm(actions, axis=0)
     print(f"FF norm = ",action_norm)
@@ -353,8 +361,19 @@ if PLOTS and log:
     wandb.log({'zero_actions':fig})
     del fig
 
-pos_tracking_err = np.mean(pos_error)
-fb_lin_err = np.mean(fb_lin_arr)
+zero_pos_tracking_err_mean = np.mean(pos_error)
+zero_pos_tracking_errors = pos_error
+zero_fb_lin_err_mean = np.mean(fb_lin_arr)
+zero_fb_lin_errors = fb_lin_arr
+
+zero_all_tracking_error = all_joint_tracking_error
+zero_all_fb_lin_error = fb_lin_arr
+
+zero_pos_error = all_tracking_error
+zero_fb_lin_error = all_fb_lin_error
+zero_pid_commands = logs['pid_command'][1:]
+zero_rewards = logs['rewards'].reshape(-1,1)
+zero_actions = actions
 
 print("Zero baseline "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew," . All_rewards = ",all_rewards)
 # print("Rand eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2)
@@ -377,10 +396,14 @@ acc_error = []
 logs_array =[]
 fb_lin_arr = []
 
+all_tracking_error_arr = []
+all_fb_lin_arr = []
+
 for ev in range(NUM_EVALS):
     logs = unpack_logs(logs_list[ev])
     all_tracking_error = logs['joint_pos'][1:] - logs['joint_pos_des'][:-1]
     joint_tracking_error = np.sqrt(np.mean((logs['joint_pos'][1:] - logs['joint_pos_des'][:-1])**2, axis=0))
+    all_tracking_error_arr.append(joint_tracking_error)
     tracking_mean_error = joint_tracking_error.mean()
     pos_error.append(tracking_mean_error)
     print("\n\n")
@@ -392,7 +415,8 @@ for ev in range(NUM_EVALS):
     # this is axis =0 hence joint-wise computation, to match reward set axis=1 (step wise) and later sum for whole episode
     fb_lin_error_mean = np.sqrt(np.mean(all_fb_lin_error**2, axis=0))
     fb_lin_mean_error = np.mean(np.linalg.norm(all_fb_lin_error, axis=0))
-    fb_lin_arr.append(fb_lin_mean_error)
+    
+    all_fb_lin_arr.append(fb_lin_error_mean)
     print(f"FB Linearization error joint-wise : ", fb_lin_error_mean)
     print(f"FB RMSE1 (mean of jointwise FB error) = {fb_lin_error_mean.mean():.6f}")
 
@@ -429,13 +453,66 @@ if PLOTS and log:
     del fig
 
 pos_tracking_err = np.mean(pos_error)
-fb_lin_err = np.mean(fb_lin_arr)
+# fb_lin_err = np.mean(all_fb_lin_arr)
 
-print("Rand "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew)
-print("Rand eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2," . All_rewards = ",all_rewards)
+print("Loaded "," . Mean Episode reward = ",avg_eval_rew," . Std dev = ", std_eval_rew)
+# print("Loaded eval func"," . Mean Episode reward = ",avg_eval_rew2," . Std dev = ", std_eval_rew2," . All_rewards = ",all_rewards)
 
 # if log:
 #     wandb.summary["zero_RMSE1"] = zero_RMSE1
 #     wandb.summary["random_RMSE1"] = random_RMSE1
 #     wandb.summary["zero_reward"] = zero_reward
 #     wandb.summary["zero_fb_lin_err"] = zero_fb_lin_err
+
+#____________________________________________________
+# COMPARISON
+print("\n\n******************************* COMPARISON ***********************************\n\n")
+x = np.array(all_tracking_error_arr)
+y = np.array(zero_all_tracking_error)
+
+a = np.array(all_fb_lin_arr)
+b = np.array(zero_all_fb_lin_error)
+
+
+# Trajectory level
+print("\n ----Trajectory Level Level : \n")
+jx = x.mean(axis=1)
+jy = y.mean(axis=1)
+
+print(f"Trajectory Wise tracking error baseline = {jy}")
+print(f"Trajectory Wise tracking error model = {jx}")
+print(f"Change = {jx-jy}")
+print(f"Improvement % = {(jy-jx)/jy *100}%")
+
+ja = a.mean(axis=1)
+jb = b.mean(axis=1)
+print(f"\nTrajectory Wise FB Lin error baseline = {jb}")
+print(f"Trajectory Wise FB lin error model = {ja}")
+print(f"Change = {ja-jb}")
+print(f"Improvement % = {(jb-ja)/jb *100}%")
+
+
+# Joint level
+print("\n ----Joint Level : \n")
+jx = x.mean(axis=0)
+jy = y.mean(axis=0)
+
+print(f"Joint Wise tracking error baseline = {jy}")
+print(f"Joint Wise tracking error model = {jx}")
+print(f"Change = {jx-jy}")
+print(f"Improvement % = {(jy-jx)/jy *100}%")
+
+ja = a.mean(axis=0)
+jb = b.mean(axis=0)
+print(f"\nJoint Wise FB Lin error baseline = {jb}")
+print(f"Joint Wise FB lin error model = {ja}")
+print(f"Change = {ja-jb}")
+print(f"Improvement % = {(jb-ja)/jb *100}%")
+#Summary
+print("\n ----Summary Level :\n")
+
+print(f"Baseline tracking error = {y.mean():.4f} | With model = {x.mean():.4f}")
+print(f"Change = {x.mean() - y.mean():.4f} | Improvement % = {(y.mean() - x.mean())/y.mean() *100:.2f}%")
+
+print(f"\nBaseline FB error = {b.mean():.4f} | With model = {a.mean():.4f}")
+print(f"Change = {a.mean() - b.mean():.4f} | Improvement % = {(b.mean() - a.mean())/b.mean() *100:.2f}%")

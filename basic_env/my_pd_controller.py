@@ -166,25 +166,29 @@ class MyPositionController:
     
     def initialize_traj(self):
         if self.random_traj:
-            A = self.traj_A_limits[0] + self.A_rng.uniform()*(self.traj_A_limits[1] - self.traj_A_limits[0])
-            B = self.traj_B_limits[0] + self.B_rng.uniform()*(self.traj_B_limits[1] - self.traj_B_limits[0])
+            # A = self.traj_A_limits[0] + self.A_rng.uniform()*(self.traj_A_limits[1] - self.traj_A_limits[0])
+            # B = self.traj_B_limits[0] + self.B_rng.uniform()*(self.traj_B_limits[1] - self.traj_B_limits[0])
+            A = self.traj_A_limits[0] + np.random.uniform()*(self.traj_A_limits[1] - self.traj_A_limits[0])
+            B = self.traj_B_limits[0] + np.random.uniform()*(self.traj_B_limits[1] - self.traj_B_limits[0])
             
         elif self.test_traj == 'in_distribution':
             #think more on how to keep this uniform
             A = self.traj_A_limits[0] + self.A_rng.uniform()*(self.traj_A_limits[1] - self.traj_A_limits[0])
             B = self.traj_B_limits[0] + self.B_rng.uniform()*(self.traj_B_limits[1] - self.traj_B_limits[0])
+            print("A = ", A , " | B = ",B)
         elif self.test_traj == 'out_of_distribution':
             a_limits = [0.7,1.1]
             b_limits = [3,4]
             A = a_limits[0] + self.A_rng.uniform()*(a_limits[1] - a_limits[0])
             B = b_limits[0] + self.B_rng.uniform()*(b_limits[1] - b_limits[0])
+            print("A = ", A , " | B = ",B)
         else:
             # basic mode -- single traj -- same test and eval traj
             # SIN wave
             A = 1
             B = 2
         
-        print("A = ", A , " | B = ",B)
+        # print("A = ", A , " | B = ",B)
         q_trajectories = [[A*np.sin((B*np.pi/step) *s)+current for s in range(step)] for step,current in zip(self.steps,self._q_current)]
         dq_trajectories = [[A*(B*np.pi/step)*np.cos((B*np.pi/step)*s) for s in range(step)]  for step in self.steps]
         ddq_trajectories = [[-A*((B*np.pi/step)**2)*np.sin((B*np.pi/step)*s) for s in range(step)] for step in self.steps]
